@@ -1,0 +1,10 @@
+# 构建产物
+build/
+
+# Xcode 用户数据
+xcuserdata/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# macOS 元数据
+.DS_Store
