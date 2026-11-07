@@ -24,10 +24,10 @@ struct SettingsView: View {
     private static let unitNote = "本应用所有长度 / 面积数值均按 macOS 逻辑分辨率（点 pt）计算：Retina 屏上 1 点 = 2 物理像素，无需换算。"
 
     /// 「最小宽度」的悬停提示（标签与输入框共用，避免界面上出现常驻说明文字）。
-    private let minimumWidthHelp = "宽屏模式的宽度下限，默认 1710（逻辑分辨率），范围 0~10000（0 = 不限制）。优先级高于「左右预留」：小屏幕上按预留算出的宽度不足此值时自动压缩预留，最小压缩到 0（窗口顶到左右两边）；可见宽本身不足时占满可见宽。竖屏自适应与窄模式不受影响。" + SettingsView.unitNote
+    private let minimumWidthHelp = "宽模式的宽度下限，默认 1710（逻辑分辨率），范围 0~10000（0 = 不限制）。优先级高于「左右预留」：小屏幕上按预留算出的宽度不足此值时自动压缩预留，最小压缩到 0（窗口顶到左右两边）；可见宽本身不足时占满可见宽。竖屏自适应与窄模式不受影响。" + SettingsView.unitNote
 
     /// 「左右预留」的悬停提示（标签与输入框共用）。
-    private let marginHelp = "整数，宽屏模式左右各预留该值（逻辑分辨率）；默认 245，范围 0~10000（0 = 不预留）。仅在「台前调度检测」开启且系统台前调度开启时生效；屏幕较小时会被「最小宽度」自动压缩，甚至减到 0。" + SettingsView.unitNote
+    private let marginHelp = "整数，宽模式左右各预留该值（逻辑分辨率）；默认 245，范围 0~10000（0 = 不预留）。仅在「台前调度检测」开启且系统台前调度开启时生效；屏幕较小时会被「最小宽度」自动压缩，甚至减到 0。" + SettingsView.unitNote
 
     /// 最小窗口面积输入框只允许 0~100000000 的整数（0 = 不启用该规则）。
     private let areaFormatter: NumberFormatter = {
@@ -110,7 +110,7 @@ struct SettingsView: View {
 
             Section {
                 Toggle("竖屏自适应", isOn: $portraitAdaptive)
-                    .help("屏幕高 > 宽时优先：不分宽屏 / 窄模式，宽度取屏幕宽度、左右不预留；下方选项均不生效。")
+                    .help("屏幕高 > 宽时优先：不分宽模式 / 窄模式，宽度取屏幕宽度、左右不预留；下方选项均不生效。")
 
                 Picker("窄窗口模式", selection: $narrowWidthSourceRaw) {
                     Text("屏幕宽度的一半").tag(0)
@@ -134,7 +134,7 @@ struct SettingsView: View {
 
             Section {
                 Toggle("台前调度检测", isOn: $stageManagerDetect)
-                    .help("开启：系统台前调度开启时左右预留，系统台前调度关闭时不预留。\n关闭：一律不预留，宽屏占满可用宽度。\n竖屏自适应生效时本选项不生效；预留值可能被「最小宽度」压缩。")
+                    .help("开启：系统台前调度开启时左右预留，系统台前调度关闭时不预留。\n关闭：一律不预留，宽模式占满可用宽度。\n竖屏自适应生效时本选项不生效；预留值可能被「最小宽度」压缩。")
 
                 HStack {
                     Text("左右预留")

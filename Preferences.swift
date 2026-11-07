@@ -18,7 +18,7 @@ enum Preferences {
     static let adaptiveCenterKey = "adaptiveCenter"
     /// 窄窗口模式的宽度取值方式（见 `NarrowWidthSource`）。
     static let narrowWidthSourceKey = "narrowWidthSource"
-    /// 宽屏模式的最小宽度（整数，逻辑分辨率 / 点，默认 1710；0 = 不启用保底）。
+    /// 宽模式的最小宽度（整数，逻辑分辨率 / 点，默认 1710；0 = 不启用保底）。
     static let minimumWidthKey = "minimumWidth"
     /// 竖屏自适应开关。
     static let portraitAdaptiveKey = "portraitAdaptive"
@@ -50,7 +50,7 @@ enum Preferences {
         return UserDefaults.standard.bool(forKey: stageManagerDetectKey)
     }
 
-    /// 本次布局实际预留的左右宽度（逻辑分辨率 / 点，宽屏模式使用）。
+    /// 本次布局实际预留的左右宽度（逻辑分辨率 / 点，宽模式使用）。
     /// - 开关关闭 → 0（不预留）
     /// - 开关开启 且 系统台前调度开启 → `margin`
     /// - 开关开启 但 系统台前调度关闭 → 0（不预留）
@@ -64,12 +64,12 @@ enum Preferences {
     /// 「台前调度检测」开关的默认值（默认开启 = 原来三态里的「自动检测」）。
     static let stageManagerDetectDefault = true
 
-    /// 宽屏模式「最小宽度」的默认值（逻辑分辨率 / 点）。
+    /// 宽模式「最小宽度」的默认值（逻辑分辨率 / 点）。
     static let minimumWidthDefault = 1710
 
-    /// 读取宽屏模式的最小宽度（整数，逻辑分辨率 / 点）；未设置时默认 1710，非法值收敛到 0~10000。
+    /// 读取宽模式的最小宽度（整数，逻辑分辨率 / 点）；未设置时默认 1710，非法值收敛到 0~10000。
     /// - `0` = 不启用保底，完全按「左右预留」计算。
-    /// - 这是宽屏宽度的**下限**，逻辑优先级高于「左右预留」：屏幕较小时预留会被压缩。
+    /// - 这是宽模式宽度的**下限**，逻辑优先级高于「左右预留」：屏幕较小时预留会被压缩。
     /// - 窗口宽度不会超过屏幕可见宽（由 `WindowManager.targetFrame` 再夹一次）。
     static var minimumWidth: CGFloat {
         guard UserDefaults.standard.object(forKey: minimumWidthKey) != nil else {
@@ -168,7 +168,7 @@ enum NarrowWidthSource: Int {
     }
 }
 
-/// 窗口目标比例模式：宽屏（默认）或窄模式。
+/// 窗口目标比例模式：宽模式（默认）或窄模式。
 /// - Note: rawValue 与既有偏好值保持一致，改动会导致已保存的设置失效。
 enum WindowMode: Int {
     case wide = 0
@@ -205,7 +205,7 @@ enum HapticStrength: Int {
 extension Preferences {
     private static func modeKey(for bundleID: String) -> String { "windowMode.\(bundleID)" }
 
-    /// 读取某 App 记忆的窗口模式；未记录时默认宽屏。
+    /// 读取某 App 记忆的窗口模式；未记录时默认宽模式。
     static func windowMode(for bundleID: String) -> WindowMode {
         let raw = UserDefaults.standard.integer(forKey: modeKey(for: bundleID))
         return WindowMode(rawValue: raw) ?? .wide

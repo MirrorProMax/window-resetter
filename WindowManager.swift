@@ -11,8 +11,8 @@ struct WindowManager {
 
     /// 将当前焦点窗口按规则复位到它所在的屏幕。
     ///
-    /// 每个 App 会记忆自己的目标比例（宽屏 / 窄模式，见 `WindowMode`）。
-    /// - 默认（未记忆）为宽屏：优先用宽屏布局复位。
+    /// 每个 App 会记忆自己的目标比例（宽模式 / 窄模式，见 `WindowMode`）。
+    /// - 默认（未记忆）为宽模式：优先用宽模式布局复位。
     /// - 若窗口「已处于当前目标布局」**且**窗口中心落在目标布局的中心范围内，
     ///   说明用户意图是切换比例，则翻转并记忆该 App 的模式，再应用新布局。
     /// - 否则直接按当前模式复位：把窗口归位居中（窄模式还会把被拉伸的高度补齐到上下贴边），
@@ -44,12 +44,12 @@ struct WindowManager {
             ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
         // 「左右预留」由「台前调度检测」开关 + 系统台前调度状态共同决定：
-        // 开关关闭、或系统台前调度关闭 → 0（宽屏占满可见宽度，不预留）。
+        // 开关关闭、或系统台前调度关闭 → 0（宽模式占满可见宽度，不预留）。
         // 竖屏自适应会提前接管布局，完全绕过这个值；
-        // 宽屏布局里「最小宽度」的优先级更高，必要时会把这里的预留压缩到 0。
+        // 宽模式布局里「最小宽度」的优先级更高，必要时会把这里的预留压缩到 0。
         let margin = Preferences.effectiveMargin
 
-        // 当前 App 记忆的窗口比例模式（默认宽屏）。
+        // 当前 App 记忆的窗口比例模式（默认宽模式）。
         let mode = Preferences.windowMode(for: bundleID)
 
         // 当前模式对应的目标布局。
@@ -60,7 +60,7 @@ struct WindowManager {
                                  margin: margin)
 
         // 判断窗口是否已处于当前模式的布局：
-        // 宽屏按“宽度 + 水平居中”判定；窄模式按“宽度命中 + 上下铺满可见区”判定（含等比缩小兜底）。
+        // 宽模式按“宽度 + 水平居中”判定；窄模式按“宽度命中 + 上下铺满可见区”判定（含等比缩小兜底）。
         let atTarget = isAtTarget(mode: mode, frame: frame, visible: visible, screen: screen, margin: margin)
         // 是否「真的摆正」主要看窗口中心在不在目标布局的中心范围内（设计约定）。
         // isAtTarget 的三项判据都不检查水平位置，靠右 640px 的窗口仍会被判「已在窄模式」而直接翻宽；
@@ -95,7 +95,7 @@ struct WindowManager {
                                     visible: CGRect,
                                     screen: NSScreen,
                                     margin: CGFloat) -> CGRect {
-        // 竖屏自适应：不分宽屏 / 窄模式，两种模式共用同一个全宽布局。
+        // 竖屏自适应：不分宽模式 / 窄模式，两种模式共用同一个全宽布局。
         // 宽度直接取显示器宽度、x 取屏幕左边缘，完全绕过 margin（即使开着台前调度也不预留）；
         // 高度占满可见区，不侵入菜单栏 / Dock。
         if portraitAdaptiveEnabled(for: screen) {
@@ -106,7 +106,7 @@ struct WindowManager {
         }
         switch mode {
         case .wide:
-            // 宽屏：先按「左右预留」算宽度，再用「最小宽度」保底，
+            // 宽模式：先按「左右预留」算宽度，再用「最小宽度」保底，
             // 上下占满可用区域（铺满上下，受 Dock/菜单栏影响的可见区）。
             //
             // margin 由 `Preferences.effectiveMargin` 给出：只有「台前调度检测」开关开启
@@ -136,7 +136,7 @@ struct WindowManager {
     }
 
     /// 判断窗口是否已处于指定模式的布局。
-    /// - 宽屏：仅按“宽度 + 水平居中”判定，不依赖高度（高度受 Dock 影响不可靠）。
+    /// - 宽模式：仅按“宽度 + 水平居中”判定，不依赖高度（高度受 Dock 影响不可靠）。
     ///   目标宽度同时受台前调度预留与「最小宽度」保底影响，与布局共用 `targetFrame`，不会不一致。
     /// - 窄模式：宽度命中目标宽度 **且** 垂直方向占满可见区，才算真正到位；
     ///   只满足宽度（例如用户手动拉伸过高度）视为「未摆正」，按当前模式复位补齐上下，不翻转模式。
@@ -161,7 +161,7 @@ struct WindowManager {
             let narrowWidth = Preferences.narrowWidth(for: screen)
             // 与布局共用同一个目标帧：宽度命中 + 上下贴合可见区，才算「已摆正」。
             // 手动拉伸过高度时宽度仍对，但 verticalOK 为 false → 视为未到位，
-            // 按当前模式复位补齐上下，不翻转到宽屏。
+            // 按当前模式复位补齐上下，不翻转到宽模式。
             let narrowTarget = targetFrame(for: .narrow, frame: frame, visible: visible,
                                            screen: screen, margin: margin)
             let byWidth = abs(frame.width - narrowWidth) <= 1
@@ -169,7 +169,7 @@ struct WindowManager {
                 && abs(frame.origin.y - narrowTarget.origin.y) <= 2
             // 兜底：部分 App（如 Safari）有最大尺寸限制、或台前调度会等比缩小窗口，
             // 此时宽度 / 高度都达不到目标，但宽高比仍接近窄模式目标比，也视为已在窄模式，
-            // 否则这类被夹断的窗口永远检测不到“已在窄模式”，无法切回宽屏。
+            // 否则这类被夹断的窗口永远检测不到“已在窄模式”，无法切回宽模式。
             // 宽度选「屏幕的高度」时，因目标高改用可见高，目标比约为 1.02 而非严格 1:1。
             let byAspect = frame.height > 0 && narrowTarget.height > 0
                 && abs(frame.width / frame.height - narrowWidth / narrowTarget.height) <= 0.02
@@ -259,7 +259,7 @@ struct WindowManager {
     /// 调整完成后的兜底：**不判断窗口尺寸能否自由拉伸**，一律再按实际尺寸把窗口摆到居中位置。
     ///
     /// 锚点是「目标布局的中心」：`(target.midX, target.midY)`，窗口保持系统实际给出的尺寸。
-    /// 这样对三种布局都成立：宽屏 / 窄模式以可见区中心为锚，竖屏统一全宽布局以屏幕中心为锚。
+    /// 这样对三种布局都成立：宽模式 / 窄模式以可见区中心为锚，竖屏统一全宽布局以屏幕中心为锚。
     ///
     /// 幂等：若尺寸完全按目标生效，算出的帧与目标帧一模一样，正常窗口零副作用；
     /// 若系统 / App 忽略了尺寸请求（固定宽度、最大尺寸上限、台前调度夹断等），
