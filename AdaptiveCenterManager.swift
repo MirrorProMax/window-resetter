@@ -16,7 +16,7 @@ import Dispatch
 ///    未居中的窗口不做任何补偿。**水平（左右）每轮补偿，垂直（上下）每 6 轮补偿一次**
 ///    （6 × 60ms ≈ 360ms）；窗口某一端已顶到可见区上 / 下边缘时不写垂直位置。
 ///    这层降频只作用于「用户按住鼠标拉伸」；系统自己的边缘动画见第 9 项，整段禁止写入。
-/// 4. 拖动窗口**穿越**中心 5% 磁吸范围的边界 —— **进入或离开都震动一下**
+/// 4. 拖动窗口**穿越**中心磁吸范围的边界 —— **进入或离开都震动一下**
 ///    （反馈强度在设置里三档可选：轻 / 中 / 强，默认「强」），让用户知道窗口刚进 / 刚出范围；
 ///    进入后松开鼠标 → 吸附到中心。判定只看窗口是否跨越边界，与窗口当前是否已居中、
 ///    是否被锁定、是否被记录为「用户定位」无关。
@@ -50,8 +50,8 @@ final class AdaptiveCenterManager {
 
     /// 轮询间隔（秒）：检测窗口切换、跨屏、尺寸变化。
     private let pollInterval: TimeInterval = 0.06
-    /// 磁吸半径：屏幕可见区宽 / 高的 5%。
-    private let snapRatio: CGFloat = 0.05
+    /// 磁吸半径由设置里的「吸附率」决定（见 `Preferences.snapRatio`），
+    /// 按屏幕可见区宽 / 高的百分比实时读取，默认 8%。
     /// 判定「已居中」的容差（逻辑分辨率 / 点）。
     private let centerTolerance: CGFloat = 2
     /// 判定「用户手动移动过窗口」的位移阈值：小于它的抖动（如 AX 写入误差）不算。
@@ -102,7 +102,7 @@ final class AdaptiveCenterManager {
     /// 会被当成故障、促使用户彻底关闭触觉反馈）。
     /// 脉冲间隔（秒）：80ms，两下连起来像一次更饱满的反馈，而不是两次独立提示。
     private let hapticPulseInterval: TimeInterval = 0.08
-    /// 两次「边界穿越」反馈之间的最短间隔（秒）。窗口正好压在 5% 边界上手抖时，
+    /// 两次「边界穿越」反馈之间的最短间隔（秒）。窗口正好压在磁吸边界上手抖时，
     /// 会连续进 / 出范围；不加冷却会连震成一片（Apple 也警告过度反馈会被当成故障）。
     /// 0.15s 足够滤掉抖动，又不影响正常拖过边界再拖回来的两次独立反馈。
     private let hapticBoundaryCooldown: TimeInterval = 0.15
@@ -693,7 +693,7 @@ final class AdaptiveCenterManager {
         }
     }
 
-    /// 拖动过程中实时判断窗口是否**跨越**中心 5% 磁吸范围的边界。
+    /// 拖动过程中实时判断窗口是否**跨越**中心磁吸范围的边界。
     /// 进入或离开都触发一次触控板反馈（强度由设置里的三档决定）—— 用户要的是「知道现在它离开范围了」，
     /// 而不是只在靠近中心时有提示。判定只看窗口帧，与窗口是否已居中、是否被锁定、
     /// 是否被记录为「用户定位」都无关。
@@ -720,7 +720,7 @@ final class AdaptiveCenterManager {
         inSnapZone = inside
     }
 
-    /// 拖拽开始时的范围基准：窗口此刻是否已落在中心 5% 磁吸范围内。
+    /// 拖拽开始时的范围基准：窗口此刻是否已落在中心磁吸范围内。
     private func snapZoneBaseline(_ frame: CGRect?) -> Bool {
         guard let frame, let screen = screen(for: frame) else { return false }
         return isInSnapZone(frame, center: visibleCenter(of: screen), screen: screen)
@@ -778,8 +778,9 @@ final class AdaptiveCenterManager {
 
     private func isInSnapZone(_ frame: CGRect, center: CGPoint, screen: NSScreen) -> Bool {
         let v = screen.visibleFrame
-        return abs(frame.midX - center.x) <= v.width * snapRatio
-            && abs(frame.midY - center.y) <= v.height * snapRatio
+        let ratio = Preferences.snapRatio
+        return abs(frame.midX - center.x) <= v.width * ratio
+            && abs(frame.midY - center.y) <= v.height * ratio
     }
 
     /// 窗口上 / 下端与可见区边缘的贴合情况（Cocoa 坐标，左下原点）。

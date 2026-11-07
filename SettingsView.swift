@@ -38,16 +38,29 @@ struct SettingsView: View {
         return f
     }()
 
+    /// 「吸附率」输入框只允许 1~20 的整数（百分数）。
+    private let ratioFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .none
+        f.minimum = NSNumber(value: 1)
+        f.maximum = NSNumber(value: 20)
+        return f
+    }()
+
     /// 「震动强度」的悬停提示。
     private let hapticStrengthHelp = "进入 / 离开中心磁吸范围时的触控板反馈强度。Apple 官方 API 没有强度参数，只有 3 种反馈模式，这里用「模式 + 脉冲数」组合：轻=对齐×1，中=通用×2，强=档位变化×2（默认，最明显）。实际力度由系统与触控板决定，无 Force Touch 硬件时完全无感。"
+
+    /// 「吸附率」的悬停提示（标签与输入框共用）。
+    private let snapRatioHelp = "中心磁吸范围占屏幕可见区宽 / 高的百分比（整数，默认 8，范围 1~20）。窗口中心同时落在水平 ±吸附率×可见宽、垂直 ±吸附率×可见高内时：进 / 出边界各震动一次，进入后松手吸附到中心，并让固定在侧边的窗口恢复自动居中。数值越大越容易吸住，但也越容易把刻意放偏的窗口拉回中心；想保留旧版手感可填 5。"
 
     /// 「最小窗口面积」的悬停提示（标签与输入框共用）。
     private let minimumAreaHelp = "窗口宽×高小于此值时不触发自适应居中（不居中、不补偿、不磁吸、不震动）。默认 200000（逻辑分辨率²，约 500×400），0 = 不启用。用于排除调度中心缩略窗口、系统小浮层、最小化窗口等；正常大窗口不受影响。" + SettingsView.unitNote
 
-    // 按界面上的优先级顺序声明：启动 → 自适应居中（震动强度 / 最小窗口面积） → 竖屏自适应
+    // 按界面上的优先级顺序声明：启动 → 自适应居中（吸附率 / 震动强度 / 最小窗口面积） → 竖屏自适应
     // → 窄窗口模式 → 最小宽度 → 台前调度 / 边距 → 动画。
     @AppStorage(Preferences.launchKey) private var launchAtLogin: Bool = false
     @AppStorage(Preferences.adaptiveCenterKey) private var adaptiveCenter: Bool = Preferences.adaptiveCenterDefault
+    @AppStorage(Preferences.snapRatioKey) private var snapRatioPercent: Int = Preferences.snapRatioPercentDefault
     @AppStorage(Preferences.hapticStrengthKey) private var hapticStrengthRaw: Int = Preferences.hapticStrengthDefault
     @AppStorage(Preferences.minimumWindowAreaKey) private var minimumWindowArea: Int = Preferences.minimumWindowAreaDefault
     @AppStorage(Preferences.portraitAdaptiveKey) private var portraitAdaptive: Bool = false
@@ -60,10 +73,10 @@ struct SettingsView: View {
 
     var body: some View {
         // 排序原则：运行时逻辑链上越早参与判断、越能覆盖下游设置的项，位置越靠前。
-        // 启动 → 自适应居中（震动强度 / 最小窗口面积） → 竖屏自适应 → 窄窗口模式
+        // 启动 → 自适应居中（吸附率 / 震动强度 / 最小窗口面积） → 竖屏自适应 → 窄窗口模式
         // → 最小宽度 → 台前调度 / 边距 → 动画（只改到达方式）。
         // 最小宽度排在左右预留之前：它会覆盖后者计算出的宽度；
-        // 自适应居中的两个子项只在开关打开时显示，与「时长」的条件显示保持一致。
+        // 自适应居中的三个子项只在开关打开时显示，与「时长」的条件显示保持一致。
         // 说明文字一律用 .help 挂在控件上：macOS 上光标悬停即显示 tooltip，界面只留控件本身。
         Form {
             Section {
@@ -83,9 +96,19 @@ struct SettingsView: View {
                         AdaptiveCenterManager.shared.setEnabled(newValue)
                     }
                 ))
-                .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心 5% 范围各震动一下，进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及面积过小的窗口不参与。")
+                .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心磁吸范围各震动一下（范围由下方「吸附率」设定），进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及面积过小的窗口不参与。")
 
                 if adaptiveCenter {
+                    HStack {
+                        Text("吸附率")
+                        TextField("整数", value: $snapRatioPercent, formatter: ratioFormatter)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                            .help(snapRatioHelp)
+                        Text("%")
+                            .help(snapRatioHelp)
+                    }
+
                     Picker("震动强度", selection: $hapticStrengthRaw) {
                         Text("轻").tag(0)
                         Text("中").tag(1)
@@ -174,9 +197,9 @@ struct SettingsView: View {
     }
 
     /// 设置窗口高度：两处条件显示的控件会改变行数。
-    /// 基础 420（含「最小宽度」行）；自适应居中开 → 多两行（震动强度 / 最小窗口面积）；
+    /// 基础 420（含「最小宽度」行）；自适应居中开 → 多三行（吸附率 / 震动强度 / 最小窗口面积）；
     /// 平滑变化开 → 多一行「时长」。
     private var windowHeight: CGFloat {
-        420 + (adaptiveCenter ? 60 : 0) + (smoothAnimation ? 50 : 0)
+        420 + (adaptiveCenter ? 90 : 0) + (smoothAnimation ? 50 : 0)
     }
 }

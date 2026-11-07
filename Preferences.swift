@@ -30,6 +30,10 @@ enum Preferences {
     static let hapticStrengthKey = "hapticStrength"
     /// 自适应居中的最小窗口面积（宽×高，逻辑分辨率² / 点²；0 = 不启用该规则）。
     static let minimumWindowAreaKey = "minimumWindowArea"
+    /// 「吸附率」：中心磁吸范围占屏幕可见区宽 / 高的百分比（整数，默认 8，范围 1~20）。
+    static let snapRatioKey = "snapRatioPercent"
+    /// 「吸附率」默认值（百分数）。
+    static let snapRatioPercentDefault = 8
 
     /// 读取左右预留（整数，逻辑分辨率 / 点）；未设置时默认 `marginDefault`，非法值收敛到 0~10000。
     /// 允许 0（用户显式设为 0 就是「不预留」），不再把 0 当成未设置而回落到默认值。
@@ -144,6 +148,16 @@ enum Preferences {
         }
         let v = UserDefaults.standard.integer(forKey: minimumWindowAreaKey)
         return min(100_000_000, max(0, v))
+    }
+
+    /// 读取中心磁吸范围比例（0~1 的小数）；未设置按默认 8%，非法值收敛到 1~20%。
+    /// 水平按可见区宽、垂直按可见区高分别计算，窗口中心需同时落在两个范围内才算进入磁吸区。
+    static var snapRatio: CGFloat {
+        guard UserDefaults.standard.object(forKey: snapRatioKey) != nil else {
+            return CGFloat(snapRatioPercentDefault) / 100
+        }
+        let v = UserDefaults.standard.integer(forKey: snapRatioKey)
+        return CGFloat(min(20, max(1, v))) / 100
     }
 
     /// 窄模式的目标宽度（按「窄窗口模式」单选器）。
