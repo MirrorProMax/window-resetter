@@ -287,10 +287,11 @@ def draw_icon(img, cx, cy, size, bg=ACCENT, glyph=WHITE):
 
 
 def chrome(img, t, scene_idx, scene_name, caption_lines, note, kicker=True, fade_t=None,
-           tag=None):
+           tag=None, fade_dur=0.25):
     """统一的字幕、页眉与进度条。t 必须是全局时间 G(local_t)；
     fade_t 用镜头内局部时间，进度条始终按全局 t 单调递增。
-    tag 用于把「可选操作」类镜头与主角功能区分开。"""
+    tag 用于把「可选操作」类镜头与主角功能区分开；
+    fade_dur 控制字幕淡入时长，开场用较长值让节奏更缓。"""
     # 平台标注常驻，避免观众误以为是 Windows 工具
     rrect(img, (70, 84, 330, 146), (43, 92, 156), radius=31)
     txt(img, (200, 115), "macOS 专属", 29, WHITE, bold=True, shadow=False)
@@ -302,7 +303,7 @@ def chrome(img, t, scene_idx, scene_name, caption_lines, note, kicker=True, fade
         txt(img, (990, 208), f"{scene_idx:02d} / {len(SCENES):02d}  {scene_name}", 28, MUTED,
             anchor="rm", shadow=False)
     ft = t if fade_t is None else fade_t
-    fade = int(255 * seg(ft, 0.0, 0.25))
+    fade = int(255 * seg(ft, 0.0, fade_dur))
     n = len(caption_lines)
     ys = [1510, 1602] if n == 2 else [1555]
     size = 66 if n == 2 else 72
@@ -334,20 +335,22 @@ MESSY_TITLES = ["浏览器", "编辑器", "终端", "备忘录"]
 
 def scene_auto(img, t):
     """开场主角：窗口自动居中（默认开启）。
-    新窗口自动落位 → 手动拖开 → 松手自己回中间。"""
+    新窗口自动落位 → 手动拖开 → 松手自己回中间。
+
+    字幕节奏与配音对齐：这段只有一句旁白（0.25s 起），所以主字幕整段
+    4.8 秒保持不变，只在开头柔和淡入一次；辅助说明也只用一条稳定胶囊。
+    三个动作交给画面动效表达，文字不再跟着闪切。
+    """
     draw_desktop(img)
     dashed_box(img, (300, 400, 780, 1300), color=ACCENT2,
                alpha=int(110 + 75 * seg(t, 0.2, 0.9)))
     if t < 1.9:
         u = ease_out(seg(t, 0.30, 1.55))
         box = lerp_rect(OFFCENTER, NARROW, u)
-        hint_pill(img, "新窗口自动落位 · 不用点，自己居中", ACCENT2,
-                  int(255 * seg(t, 1.05, 1.45)))
     elif t < 3.35:
         u = ease_inout(seg(t, 2.05, 3.05))
         box = lerp_rect(NARROW, OFFCENTER, u)
         draw_cursor(img, lerp(540, 250, u), lerp(760, 900, u))
-        hint_pill(img, "手动拖开，也没关系", MUTED, int(230 * seg(t, 2.0, 2.4)))
     else:
         u = ease_out(seg(t, 3.40, 4.35))
         box = lerp_rect(OFFCENTER, NARROW, u)
@@ -355,25 +358,17 @@ def scene_auto(img, t):
             q = seg(t, 3.9, 4.55)
             ring(img, 540, 850, int(lerp(60, 320, ease_out(q))), color=WHITE, width=7,
                  alpha=int(210 * (1 - q)))
-        hint_pill(img, "松手自己回中间 · 磁吸范围 8%（可调 1~20）", ACCENT2,
-                  int(255 * seg(t, 3.45, 3.85)))
     draw_window(img, box, "浏览器", narrow=True, active=True)
     # 开场卖点徽标（面板上方，避开桌面区）
     badge_a = int(255 * seg(t, 0.05, 0.45))
     rrect(img, (270, 248, 810, 318), (43, 92, 156), radius=35, alpha=badge_a)
     txt(img, (540, 283), "窗口自动居中 · 默认开启", 32, WHITE, bold=True,
         shadow=False, alpha=badge_a)
-    if t < 2.0:
-        caps = ["窗口，自己会居中", "默认开启 · 无需点击"]
-        ft = t
-    elif t < 3.35:
-        caps = ["手动拖开，也没关系", "想放哪，就放哪"]
-        ft = t - 2.0
-    else:
-        caps = ["松手，自己回中间", "拖回中心自动吸住"]
-        ft = t - 3.35
-    chrome(img, G(t), 1, "自动居中", caps,
-           "macOS 菜单栏小工具 · 常驻后台，默认开启", fade_t=ft)
+    # 一条稳定辅助说明，覆盖「拖开 / 松手回中间」两个动作，不做三段轮播
+    hint_pill(img, "拖开也没关系 · 松手自己回中间", ACCENT2,
+              int(255 * seg(t, 1.25, 1.85)))
+    chrome(img, G(t), 1, "自动居中", ["窗口，自己会居中", "不用点 · 默认开启"],
+           "macOS 菜单栏小工具 · 常驻后台，默认开启", fade_t=t, fade_dur=0.5)
 
 
 def scene_click(img, t):
