@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    # macos-14 镜像已于 2026-11-02 退役，使用该 label 会被 GitHub 直接取消（无 runner）。
+    runs-on: macos-15
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
