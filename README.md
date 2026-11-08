@@ -9,7 +9,7 @@
 - 30 秒竖屏版（抖音 / 小红书）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
   - 1080×1920 / 30fps / H.264 + AAC，**中文温柔女声配音**（Edge TTS 晓晓 / Warm，9 段合计 26.98 秒），人声段自动压低音效。
   - **v2 分镜（四组 / 9 镜）**：① 手动拉伸繁琐 → 想要 iPad 式自动居中；② 产品出场 / 新窗口自动居中 / 菜单栏切换宽窄 / 每 App 各记各的模式；③ 侧拉正常分屏不打扰 → 往中间靠吸回中心；④ Slogan + Gitee / GitHub 地址卡。
-  - 片尾列出 `gitee.com/MirrorPro/window-resetter` 与 `github.com/MirrorProMax/window-resetter`。**当前两个仓库均无 Release 安装包**，因此文案写「源码与构建方式见仓库 · 链接见简介」，不写「下载 App」。
+  - 片尾列出 `gitee.com/MirrorPro/window-resetter` 与 `github.com/MirrorProMax/window-resetter`。**截至成片时两个仓库 Releases 仍为空**（v1.1.0 发布流程已上线但尚未产出安装包），因此文案写「源码与构建方式见仓库 · 链接见简介」，不写「下载 App」；正式发布后改为「Releases 下载」。
   - 字幕按「一句旁白 = 一屏字幕」切换，切换点对齐镜头起点；时间轴按 9 段配音实测时长校准。
   - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；**不含多显示器 / 跨屏**相关表述。
 - 分镜脚本 v2（含成片校准时间轴、完整稿与精简稿旁白、口径禁区）：[docs/宣传短视频分镜脚本-v2.md](docs/宣传短视频分镜脚本-v2.md)
