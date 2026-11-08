@@ -1,9 +1,25 @@
 #!/usr/bin/env bash
 #
 # 编译并打包“窗口复位器”为 .app（无需 Xcode）。
-# 用法：./build.sh
+# 用法：
+#   ./build.sh               按本机 CPU 架构编译（日常开发，最快）
+#   ./build.sh --universal   编译 Universal 双架构（arm64 + x86_64，发布用）
 #
 set -eo pipefail
+
+ARCH_MODE="native"
+for arg in "$@"; do
+    case "$arg" in
+        --universal) ARCH_MODE="universal" ;;
+        -h|--help)
+            echo "用法：./build.sh [--universal]"
+            echo "  --universal  编译 arm64 + x86_64 双架构（发布用）"
+            exit 0 ;;
+        *)
+            echo "未知参数：$arg（可用：--universal、-h）" >&2
+            exit 1 ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$SCRIPT_DIR"
@@ -11,10 +27,10 @@ SRC_DIR="$SCRIPT_DIR"
 APP_NAME="窗口复位器"
 EXEC_NAME="WindowResizer"
 BUNDLE_ID="com.example.WindowResizer"
-VERSION="1.0"
-BUILD_VERSION="1"
+VERSION="1.1.0"
+BUILD_VERSION="2"
 MIN_OS="13.0"
-# 按本机 CPU 架构编译（Apple Silicon = arm64，Intel = x86_64）。
+# native 模式按本机 CPU 架构编译；universal 模式分别编两个架构再合并。
 TARGET_ARCH="$(uname -m)"
 
 BUILD_DIR="$SCRIPT_DIR/build"
@@ -25,9 +41,22 @@ RESOURCES_DIR="$CONTENTS/Resources"
 
 FRAMEWORKS="-framework AppKit -framework SwiftUI -framework CoreGraphics -framework ApplicationServices -framework ServiceManagement"
 
-echo "==> 编译 Swift 源文件（$TARGET_ARCH，macOS $MIN_OS+）"
 mkdir -p "$BUILD_DIR"
-swiftc -O -target "$TARGET_ARCH-apple-macosx$MIN_OS" $FRAMEWORKS "$SRC_DIR"/*.swift -o "$BUILD_DIR/$EXEC_NAME"
+if [ "$ARCH_MODE" = "universal" ]; then
+    echo "==> 编译 Swift 源文件（Universal: arm64 + x86_64，macOS $MIN_OS+）"
+    # 中间产物放在 build/.universal/（已被 .gitignore 忽略），每次构建覆盖复用，不做删除。
+    LIPO_TMP="$BUILD_DIR/.universal"
+    mkdir -p "$LIPO_TMP"
+    ARM64_BIN="$LIPO_TMP/arm64"
+    X86_BIN="$LIPO_TMP/x86_64"
+    swiftc -O -target "arm64-apple-macosx$MIN_OS" $FRAMEWORKS "$SRC_DIR"/*.swift -o "$ARM64_BIN"
+    swiftc -O -target "x86_64-apple-macosx$MIN_OS" $FRAMEWORKS "$SRC_DIR"/*.swift -o "$X86_BIN"
+    lipo -create -output "$BUILD_DIR/$EXEC_NAME" "$ARM64_BIN" "$X86_BIN"
+    echo "==> $(lipo -info "$BUILD_DIR/$EXEC_NAME")"
+else
+    echo "==> 编译 Swift 源文件（$TARGET_ARCH，macOS $MIN_OS+）"
+    swiftc -O -target "$TARGET_ARCH-apple-macosx$MIN_OS" $FRAMEWORKS "$SRC_DIR"/*.swift -o "$BUILD_DIR/$EXEC_NAME"
+fi
 
 echo "==> 组装 .app 包"
 # 覆盖式组装：只替换包内的可执行文件与 Info.plist。

@@ -39,21 +39,37 @@
 
 - macOS 13.0 或更高
 - 「辅助功能」权限（系统设置 › 隐私与安全性 › 辅助功能）
-- Swift 5 工具链（安装 Xcode 或 Command Line Tools 即可）
-- 支持 Apple Silicon 与 Intel Mac，构建脚本按本机架构编译
+- 发布版为 Universal 二进制，Apple Silicon 与 Intel Mac 通用
+- 仅源码构建需要 Swift 工具链（Xcode 或 Command Line Tools）
+
+## 下载安装（推荐）
+
+到 [GitHub Releases](https://github.com/MirrorProMax/window-resetter/releases) 下载最新版：
+
+| 文件 | 说明 |
+| --- | --- |
+| `窗口复位器-<版本>.dmg` | 推荐：打开后把 App 拖进「应用程序」 |
+| `窗口复位器-<版本>.zip` | 解压后把 App 拖进「应用程序」 |
+| `SHA256SUMS.txt` | 校验下载完整性：`shasum -a 256 -c SHA256SUMS.txt` |
+
+1. 把 `窗口复位器.app` 放进「应用程序」文件夹。
+2. **首次打开**：本项目是个人开源工具，未使用 Apple Developer ID 签名与公证，macOS 会提示「无法验证开发者」。在访达中**右键点击 App → 打开 → 打开**；若仍被拦截，到「系统设置 › 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/窗口复位器.app"` 移除隔离属性。这一步只需做一次，不是文件损坏。
+3. 首次启动后，在「系统设置 › 隐私与安全性 › 辅助功能」勾选「窗口复位器」，否则无法读取 / 调整窗口。
+4. 之后它常驻菜单栏：左键复位 / 切换窗口，右键打开设置、关于、退出。
 
 ## 构建与运行
 
 ```bash
-git clone <本仓库地址>
-cd window-resetter-public
-./build.sh
+git clone https://github.com/MirrorProMax/window-resetter.git
+cd window-resetter
+./build.sh                  # 按本机架构编译，日常开发用
+# ./build.sh --universal   # 发布用：编 arm64 + x86_64 双架构
 open "build/窗口复位器.app"
 ```
 
 也可以用 Xcode 打开 `WindowResizer.xcodeproj` 直接 Build & Run。
 
-`build.sh` 会依次：`swiftc` 编译全部 `.swift` → 组装 `.app` → 用本地证书 `WindowResetterSigning` 签名（证书不存在时回退 ad-hoc 签名）。产物在 `build/`，已加入 `.gitignore`。若希望签名身份稳定、避免每次替换应用后重新授权，可在「钥匙串访问」中自建代码签名证书并命名为 `WindowResetterSigning`。
+`build.sh` 会依次：`swiftc` 编译全部 `.swift`（加 `--universal` 时分别编 arm64 / x86_64 再用 `lipo` 合并）→ 组装 `.app` → 用本地证书 `WindowResetterSigning` 签名（证书不存在时回退 ad-hoc 签名）。产物在 `build/`，已加入 `.gitignore`。若希望签名身份稳定、避免每次替换应用后重新授权，可在「钥匙串访问」中自建代码签名证书并命名为 `WindowResetterSigning`。
 
 首次运行请在「系统设置 › 隐私与安全性 › 辅助功能」中勾选本应用；重新签名或替换 `.app` 后，macOS 可能要求重新授权。
 

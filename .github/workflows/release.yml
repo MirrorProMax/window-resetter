@@ -1,0 +1,60 @@
+name: 构建并发布 Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 解析并核对版本号
+        id: ver
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          SRC_V="$(sed -n 's/^VERSION="\(.*\)"/\1/p' build.sh)"
+          if [ "$V" != "$SRC_V" ]; then
+            echo "::error::tag 版本 $V 与 build.sh 的 VERSION=$SRC_V 不一致"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: 构建 Universal 应用
+        run: ./build.sh --universal
+
+      - name: 打包 DMG / ZIP / SHA256
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          OUT="build/release"
+          STAGE="build/.dmg-stage"
+          mkdir -p "$OUT" "$STAGE"
+          ditto "build/窗口复位器.app" "$STAGE/窗口复位器.app"
+          ln -sf /Applications "$STAGE/Applications"
+          hdiutil create -volname "窗口复位器 $V" -srcfolder "$STAGE" -ov -format UDZO "$OUT/窗口复位器-$V.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "build/窗口复位器.app" "$OUT/窗口复位器-$V.zip"
+          (cd "$OUT" && shasum -a 256 "窗口复位器-$V.dmg" "窗口复位器-$V.zip" > SHA256SUMS.txt)
+
+      - name: 验证产物
+        run: |
+          lipo -info "build/窗口复位器.app/Contents/MacOS/WindowResizer"
+          codesign --verify --deep "build/窗口复位器.app"
+
+      - name: 创建 / 更新 Release 并上传资产
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" build/release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" build/release/* \
+              --title "窗口复位器 v$V" \
+              --notes-file RELEASE_NOTES.md
+          fi
