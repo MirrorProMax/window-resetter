@@ -48,10 +48,12 @@
 
 到 [GitHub Releases](https://github.com/MirrorProMax/window-resetter/releases) 下载最新版：
 
+下载文件使用 ASCII 文件名，与 `SHA256SUMS.txt` 中的名称一致，可直接校验。
+
 | 文件 | 说明 |
 | --- | --- |
-| `窗口复位器-<版本>.dmg` | 推荐：打开后把 App 拖进「应用程序」 |
-| `窗口复位器-<版本>.zip` | 解压后把 App 拖进「应用程序」 |
+| `WindowResetter-<版本>.dmg` | 推荐：打开后把 App 拖进「应用程序」 |
+| `WindowResetter-<版本>.zip` | 解压后把 App 拖进「应用程序」 |
 | `SHA256SUMS.txt` | 校验下载完整性：`shasum -a 256 -c SHA256SUMS.txt` |
 
 1. 把 `窗口复位器.app` 放进「应用程序」文件夹。

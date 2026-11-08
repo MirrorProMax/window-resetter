@@ -38,9 +38,10 @@ jobs:
           mkdir -p "$OUT" "$STAGE"
           ditto "build/窗口复位器.app" "$STAGE/窗口复位器.app"
           ln -sf /Applications "$STAGE/Applications"
-          hdiutil create -volname "窗口复位器 $V" -srcfolder "$STAGE" -ov -format UDZO "$OUT/窗口复位器-$V.dmg"
-          ditto -c -k --sequesterRsrc --keepParent "build/窗口复位器.app" "$OUT/窗口复位器-$V.zip"
-          (cd "$OUT" && shasum -a 256 "窗口复位器-$V.dmg" "窗口复位器-$V.zip" > SHA256SUMS.txt)
+          # 资产名统一用 ASCII：gh 上传含中文的文件名时会吞掉中文，导致 SHA256SUMS 对不上。
+          hdiutil create -volname "窗口复位器 $V" -srcfolder "$STAGE" -ov -format UDZO "$OUT/WindowResetter-$V.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "build/窗口复位器.app" "$OUT/WindowResetter-$V.zip"
+          (cd "$OUT" && shasum -a 256 "WindowResetter-$V.dmg" "WindowResetter-$V.zip" > SHA256SUMS.txt)
 
       - name: 验证产物
         run: |
@@ -52,10 +53,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V="${{ steps.ver.outputs.version }}"
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" build/release/* --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" build/release/* \
-              --title "窗口复位器 v$V" \
-              --notes-file RELEASE_NOTES.md
-          fi
+          # 重跑时先删掉旧 Release（不会删除 tag），避免残留旧文件名的资产。
+          gh release delete "$GITHUB_REF_NAME" -y >/dev/null 2>&1 || true
+          gh release create "$GITHUB_REF_NAME" build/release/* \
+            --title "窗口复位器 v$V" \
+            --notes-file RELEASE_NOTES.md
