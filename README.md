@@ -60,9 +60,34 @@
 | `SHA256SUMS.txt` | 校验下载完整性：`shasum -a 256 -c SHA256SUMS.txt` |
 
 1. 把 `窗口复位器.app` 放进「应用程序」文件夹。
-2. **首次打开**：本项目是个人开源工具，**默认发布版本**未使用 Apple Developer ID 签名与公证，macOS 会提示「无法验证开发者」。在访达中**右键点击 App → 打开 → 打开**；若仍被拦截，到「系统设置 › 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/窗口复位器.app"` 移除隔离属性。这一步只需做一次，不是文件损坏；放行后 macOS 会把 App 记为安全性例外，之后双击即可正常启动。若 Release 由已启用公证的流程生成，首次只会弹一次「确定打开？」确认，点「打开」即可。
+2. **首次打开**：本项目是个人开源工具，**默认发布版本**未使用 Apple Developer ID 签名与公证，macOS 会提示「无法验证开发者」。在访达中**右键点击 App → 打开 → 打开**；若仍被拦截，到「系统设置 › 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/窗口复位器.app"` 移除隔离属性。这一步只需做一次，不是文件损坏；放行后 macOS 会把 App 记为安全性例外，之后双击即可正常启动。若 Release 由已启用公证的流程生成，首次只会弹一次「确定打开？」确认，点「打开」即可。若不想做这一步，可用下方的「终端一键安装」。
 3. 首次启动后，在「系统设置 › 隐私与安全性 › 辅助功能」勾选「窗口复位器」，否则无法读取 / 调整窗口。
 4. 之后它常驻菜单栏：左键复位 / 切换窗口，右键打开设置、关于、退出。
+
+### 不想手动放行？用终端一键安装（免费）
+
+浏览器会为下载文件写入「来自互联网」的隔离属性，首次打开才需要放行；`curl` 下载不会写入该属性，安装后双击即可直接启动。把下面整段复制到「终端」执行：
+
+```bash
+V=1.1.0
+B="https://github.com/MirrorProMax/window-resetter/releases/download/v$V"
+D=$(mktemp -d)
+(
+  cd "$D" &&
+  curl --http1.1 --retry 2 -fsSLO "$B/WindowResetter-$V.zip" &&
+  curl --http1.1 --retry 2 -fsSLO "$B/SHA256SUMS.txt" &&
+  grep "WindowResetter-$V.zip" SHA256SUMS.txt | shasum -a 256 -c - &&
+  ditto -x -k "WindowResetter-$V.zip" . &&
+  mv "窗口复位器.app" /Applications/ &&
+  open "/Applications/窗口复位器.app"
+)
+```
+
+发新版时把 `V` 改成对应版本号即可。命令会先校验 SHA256，再解压并放入「应用程序」。**已安装旧版的话，请先退出 App 并把旧版拖到废纸篓**再执行。装完仍需按上方第 3 步授权「辅助功能」。
+
+> Apple 未承诺隔离属性的行为长期不变；万一系统仍提示拦截，右键 → 打开 → 打开一次即可，放行后系统会记住例外，之后双击正常。
+
+开发者也可以 `git clone` 后执行 `./build.sh` 本地编译，本地产物同样不会被拦截。
 
 ## 构建与运行
 
