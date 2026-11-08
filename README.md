@@ -7,13 +7,15 @@
 ## 宣传片
 
 - 30 秒竖屏版（抖音 / 小红书）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
-  - 1080×1920 / 30fps / H.264 + AAC，**中文温柔女声配音**（Edge TTS 晓晓 / Warm，7 段约 26 秒），人声段自动压低音效。
-  - 叙事主线：**窗口自动居中**是主角（前 13 秒）；菜单栏点击复位与宽窄切换归为「可选操作」（13–19.4 秒，画面右上角有标签）。
-  - 字幕按「一句旁白 = 一屏字幕」的节奏切换，开场 4.8 秒固定一屏不闪切；配音节奏与音效独立于字幕。
-  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；按口径要求**不含多显示器 / 跨屏**相关表述。
-- 旁白音频缓存：[tools/voiceover/](tools/voiceover/)（7 段 mp3，离线重渲染无需联网）
-- 拍摄脚本（含 75 秒主版分镜、30 秒竖屏剪辑清单与配音版旁白稿）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
-- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video.py](tools/render_douyin_video.py) 重新渲染（需 ffmpeg、Pillow；缓存齐全时完全离线，缺缓存才需 edge-tts 联网，最差回退 macOS `say`）。
+  - 1080×1920 / 30fps / H.264 + AAC，**中文温柔女声配音**（Edge TTS 晓晓 / Warm，9 段合计 26.98 秒），人声段自动压低音效。
+  - **v2 分镜（四组 / 9 镜）**：① 手动拉伸繁琐 → 想要 iPad 式自动居中；② 产品出场 / 新窗口自动居中 / 菜单栏切换宽窄 / 每 App 各记各的模式；③ 侧拉正常分屏不打扰 → 往中间靠吸回中心；④ Slogan + Gitee / GitHub 地址卡。
+  - 片尾列出 `gitee.com/MirrorPro/window-resetter` 与 `github.com/MirrorProMax/window-resetter`。**当前两个仓库均无 Release 安装包**，因此文案写「源码与构建方式见仓库 · 链接见简介」，不写「下载 App」。
+  - 字幕按「一句旁白 = 一屏字幕」切换，切换点对齐镜头起点；时间轴按 9 段配音实测时长校准。
+  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；**不含多显示器 / 跨屏**相关表述。
+- 分镜脚本 v2（含成片校准时间轴、完整稿与精简稿旁白、口径禁区）：[docs/宣传短视频分镜脚本-v2.md](docs/宣传短视频分镜脚本-v2.md)
+- 早期脚本（75 秒主版分镜 + 30 秒竖屏剪辑清单）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
+- 旁白音频缓存：[tools/voiceover_v2/](tools/voiceover_v2/)（9 段 mp3，离线重渲染无需联网）
+- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video_v2.py](tools/render_douyin_video_v2.py) 重新渲染（需 ffmpeg、Pillow；缓存齐全时完全离线，缺缓存才需 edge-tts 联网，最差回退 macOS `say`）。[tools/render_douyin_video.py](tools/render_douyin_video.py) 为 v1.3 旧渲染器，保留可回退。
 
 ## 功能
 
