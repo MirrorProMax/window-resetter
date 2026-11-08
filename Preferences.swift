@@ -28,7 +28,7 @@ enum Preferences {
     static let animationDurationKey = "animationDurationMs"
     /// 触控板反馈强度档位（见 `HapticStrength`）。
     static let hapticStrengthKey = "hapticStrength"
-    /// 自适应居中的最小窗口面积（宽×高，逻辑分辨率² / 点²；0 = 不启用该规则）。
+    /// 「小窗口」面积阈值（宽×高，逻辑分辨率² / 点²；0 = 不启用该规则）。手动复位与自适应居中共用。
     static let minimumWindowAreaKey = "minimumWindowArea"
     /// 「吸附率」：中心磁吸范围占屏幕可见区宽 / 高的百分比（整数，默认 8，范围 1~20）。
     static let snapRatioKey = "snapRatioPercent"
@@ -136,9 +136,11 @@ enum Preferences {
         return HapticStrength(rawValue: UserDefaults.standard.integer(forKey: hapticStrengthKey)) ?? .strong
     }
 
-    /// 自适应居中的最小窗口面积默认值（宽×高，逻辑分辨率² / 点²；约 500×400 的窗口）。
-    /// 小于此面积的窗口（调度中心缩略窗口、系统小浮层、最小化窗口等）不参与自适应居中。
-    static let minimumWindowAreaDefault = 200_000
+    /// 「小窗口」面积阈值默认值（宽×高，逻辑分辨率² / 点²）。
+    /// 取 iPhone 镜像主窗口 326×719 = 234_394 向上留余量后的 240_000：
+    /// 面积不超过该值的窗口视为小窗口，手动复位与自适应居中都不参与。
+    /// 覆盖 iPhone 镜像、调度中心缩略窗口、系统小浮层、最小化窗口等。
+    static let minimumWindowAreaDefault = 240_000
 
     /// 读取最小窗口面积；键未写入时按默认值，非法值收敛到 0~100000000。
     /// `0` = 不启用该规则（所有窗口都参与）。

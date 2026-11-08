@@ -33,6 +33,10 @@ struct WindowManager {
         guard let window = focusedWindow(),
               let frame = getFrame(window) else { return }
 
+        // 「小窗口」不参与窗口复位：iPhone 镜像（326×719）等尺寸不超过阈值的窗口，
+        // 位置由用户自己摆，点菜单栏图标也不该把它拉成大窗口或切换宽 / 窄模式。
+        guard !isSmallWindow(frame) else { return }
+
         // 目标 App 的 Bundle ID，用于记忆其窗口比例偏好。
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
@@ -79,6 +83,20 @@ struct WindowManager {
         } else {
             applyFrame(window, from: frame, to: target)
         }
+    }
+
+    // MARK: - 小窗口判定
+
+    /// 是否为「小窗口」：面积（宽×高）不超过设置里的「最小窗口面积」阈值。
+    /// 判定用 AX 读到的逻辑尺寸（点 pt），与设置项单位一致；`0` = 不启用该规则。
+    /// iPhone 镜像主窗口 326×719 = 234_394 是本次阈值的基准；调度中心缩略窗口、
+    /// 系统小浮层、最小化窗口等同属这一类。这些窗口既不参与手动复位，也不参与
+    /// 自适应居中（不写位置 / 不磁吸 / 不震动）。
+    /// 用「不超过」而非「小于」，保证「这个尺寸及以下」被完整覆盖。
+    static func isSmallWindow(_ frame: CGRect) -> Bool {
+        let threshold = Preferences.minimumWindowArea
+        guard threshold > 0 else { return false }
+        return frame.width * frame.height <= CGFloat(threshold)
     }
 
     // MARK: - 目标布局计算

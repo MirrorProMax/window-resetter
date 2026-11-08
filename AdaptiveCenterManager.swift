@@ -31,9 +31,11 @@ import Dispatch
 /// 7. **贴边后拉伸另一面**：双击窗口上 / 下边缘后，系统只把那一端顶到可见区边缘，
 ///    另一端不会跟着到底。本服务在检测到「单侧贴边 + 光标已松开 + 帧稳定」后，
 ///    主动把另一端也拉到对侧边缘，使窗口垂直铺满可见区。
-/// 8. **窗口面积小于设定值时不参与**：调度中心里的缩略窗口、系统小浮层、最小化窗口等
-///    一律透明跳过（不居中、不补偿、不磁吸、不震动、不写位置），且**保持轮询状态** ——
-///    退出调度中心回到原窗口时不会被误判为「首次激活」而居中。阈值可在设置里改，0 = 不启用。
+/// 8. **小窗口不参与**：面积不超过「最小窗口面积」阈值（默认 240000，约 iPhone 镜像
+///    326×719 = 234394）的窗口，连同调度中心缩略窗口、系统小浮层、最小化窗口等一律透明跳过
+///    （不居中、不补偿、不磁吸、不震动、不写位置），且**保持轮询状态** ——
+///    退出调度中心回到原窗口时不会被误判为「首次激活」而居中。
+///    判定与手动复位共用 `WindowManager.isSmallWindow`；阈值可在设置里改，0 = 不启用。
 /// 9. **系统垂直动画会话内一律不写窗口几何**：双击上 / 下边缘后由系统自己跑的
 ///    「把一端顶到边」动画，特征是「光标已松开 + 高度逐轮变化」。这段会话内**整个轮询不写
 ///    AXPosition / AXSize**，而不是只跳过某个分支的 y —— 磁吸吸附、贴边补齐、激活/跨屏居中
@@ -273,22 +275,15 @@ final class AdaptiveCenterManager {
 
     // MARK: - 焦点窗口与排除名单
 
-    /// 取当前焦点窗口；系统浮层、以及面积小于设定阈值的窗口都返回 nil。
+    /// 取当前焦点窗口；系统浮层、以及「小窗口」都返回 nil。
     /// 先在应用级判一次，保证鼠标事件路径（磁吸 / 震动）在浮层期间同样不参与；
-    /// 鼠标路径也必须跳过过小窗口，否则调度中心里仍会写位置 / 误震动。
+    /// 鼠标路径也必须跳过小窗口，否则调度中心里仍会写位置 / 误震动。
+    /// 判定与手动复位共用 `WindowManager.isSmallWindow`，避免两条路径口径漂移。
     private func trackedWindow() -> AXUIElement? {
         if isExcludedFocusedApp() { return nil }
         guard let window = WindowManager.focusedWindow(), !isExcludedApp(window) else { return nil }
-        if let frame = WindowManager.getFrame(window), isTooSmall(frame) { return nil }
+        if let frame = WindowManager.getFrame(window), WindowManager.isSmallWindow(frame) { return nil }
         return window
-    }
-
-    /// 窗口面积（宽×高）是否小于设置里的「最小窗口面积」。`0` = 不启用该规则。
-    /// 用于把调度中心缩略窗口、系统小浮层、最小化窗口排除在自适应居中之外。
-    private func isTooSmall(_ frame: CGRect) -> Bool {
-        let threshold = Preferences.minimumWindowArea
-        guard threshold > 0 else { return false }
-        return frame.width * frame.height < CGFloat(threshold)
     }
 
     /// **前置**判定：当前「系统级 AX 焦点应用」是否属于排除名单。
@@ -416,11 +411,11 @@ final class AdaptiveCenterManager {
             return
         }
 
-        // 窗口面积小于阈值（调度中心缩略窗口 / 系统小浮层 / 最小化窗口等）：
+        // 小窗口（iPhone 镜像 326×719、调度中心缩略窗口 / 系统小浮层 / 最小化窗口等）：
         // 整个服务透明跳过 —— 不写位置、不补偿、不吸附、不震动；
         // lastWindow / lastFrame / records 一律不动，退出调度中心回到原窗口时
         // 不会被误判为「首次激活」而居中。
-        if isTooSmall(frame) {
+        if WindowManager.isSmallWindow(frame) {
             skipTransiently()
             return
         }
