@@ -33,14 +33,19 @@ struct WindowManager {
         guard let window = focusedWindow(),
               let frame = getFrame(window) else { return }
 
-        // 「小窗口」不参与窗口复位：iPhone 镜像（326×719）等尺寸不超过阈值的窗口，
-        // 位置由用户自己摆，点菜单栏图标也不该把它拉成大窗口或切换宽 / 窄模式。
-        guard !isSmallWindow(frame) else { return }
-
-        // 目标 App 的 Bundle ID，用于记忆其窗口比例偏好。
+        // 目标 App 的 Bundle ID：既用于记忆其窗口比例偏好，也用于「忽略的 App」判定。
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
         let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
+
+        // 「忽略的 App」优先：列表里的 App 完全由「复位」复选框决定，不再叠加面积规则。
+        // 未列出的 App 沿用「小窗口」规则（326×719 等尺寸不超过阈值的窗口不复位，
+        // 位置由用户自己摆，点菜单栏图标也不该把它拉成大窗口或切换宽 / 窄模式）。
+        if let rule = Preferences.ignoredApp(for: bundleID) {
+            guard !rule.skipReset else { return }
+        } else {
+            guard !isSmallWindow(frame) else { return }
+        }
 
         // 找到窗口中心所在的屏幕。
         let screen = (NSScreen.screens.first { $0.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) })
@@ -92,6 +97,8 @@ struct WindowManager {
     /// iPhone 镜像主窗口 326×719 = 234_394 是本次阈值的基准；调度中心缩略窗口、
     /// 系统小浮层、最小化窗口等同属这一类。这些窗口既不参与手动复位，也不参与
     /// 自适应居中（不写位置 / 不磁吸 / 不震动）。
+    /// - Note: 只对**未列入「忽略的 App」列表**的 App 生效：列表里的条目由复选框
+    ///   显式决定，面积规则不再叠加（否则「不勾选 = 功能生效」会被悄悄覆盖）。
     /// 用「不超过」而非「小于」，保证「这个尺寸及以下」被完整覆盖。
     static func isSmallWindow(_ frame: CGRect) -> Bool {
         let threshold = Preferences.minimumWindowArea

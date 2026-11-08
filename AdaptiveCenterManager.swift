@@ -31,8 +31,11 @@ import Dispatch
 /// 7. **贴边后拉伸另一面**：双击窗口上 / 下边缘后，系统只把那一端顶到可见区边缘，
 ///    另一端不会跟着到底。本服务在检测到「单侧贴边 + 光标已松开 + 帧稳定」后，
 ///    主动把另一端也拉到对侧边缘，使窗口垂直铺满可见区。
-/// 8. **小窗口不参与**：面积不超过「最小窗口面积」阈值（默认 240000，约 iPhone 镜像
-///    326×719 = 234394）的窗口，连同调度中心缩略窗口、系统小浮层、最小化窗口等一律透明跳过
+/// 8. **忽略的 App 优先于小窗口规则**：设置里「忽略的 App」列表中的条目，是否参与自适应居中
+///    完全由该行的「自适应居中」复选框决定（勾选 = 不参与），**不再叠加面积规则** ——
+///    否则「不勾选 = 照常居中」会被按尺寸的一刀切悄悄覆盖（默认 iPhone 镜像就属于这种情况）。
+///    未列入列表的 App 才走第 8b 条的面积规则：面积不超过「最小窗口面积」阈值（默认 240000，
+///    约 326×719 = 234394）的窗口，连同调度中心缩略窗口、系统小浮层、最小化窗口等一律透明跳过
 ///    （不居中、不补偿、不磁吸、不震动、不写位置），且**保持轮询状态** ——
 ///    退出调度中心回到原窗口时不会被误判为「首次激活」而居中。
 ///    判定与手动复位共用 `WindowManager.isSmallWindow`；阈值可在设置里改，0 = 不启用。
@@ -275,14 +278,35 @@ final class AdaptiveCenterManager {
 
     // MARK: - 焦点窗口与排除名单
 
-    /// 取当前焦点窗口；系统浮层、以及「小窗口」都返回 nil。
+    /// 「忽略的 App」对某个窗口的判定结果。
+    /// - `.skip`：列表里勾了「自适应居中」→ 整个服务透明跳过（与系统浮层同一处理）。
+    /// - `.listed`：列表里没勾 → 正常参与，且**豁免面积规则**（列表是显式设定，优先级更高）。
+    /// - `.unlisted`：不在列表 → 沿用「最小窗口面积」规则。
+    private enum TrackingRule { case skip, listed, unlisted }
+
+    private func trackingRule(for window: AXUIElement) -> TrackingRule {
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(window, &pid) == .success,
+              let id = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+              let rule = Preferences.ignoredApp(for: id) else { return .unlisted }
+        return rule.skipAdaptiveCenter ? .skip : .listed
+    }
+
+    /// 取当前焦点窗口；系统浮层、被忽略的 App、以及（未列入列表的）小窗口都返回 nil。
     /// 先在应用级判一次，保证鼠标事件路径（磁吸 / 震动）在浮层期间同样不参与；
     /// 鼠标路径也必须跳过小窗口，否则调度中心里仍会写位置 / 误震动。
     /// 判定与手动复位共用 `WindowManager.isSmallWindow`，避免两条路径口径漂移。
     private func trackedWindow() -> AXUIElement? {
         if isExcludedFocusedApp() { return nil }
         guard let window = WindowManager.focusedWindow(), !isExcludedApp(window) else { return nil }
-        if let frame = WindowManager.getFrame(window), WindowManager.isSmallWindow(frame) { return nil }
+        switch trackingRule(for: window) {
+        case .skip:
+            return nil
+        case .listed:
+            break   // 显式列出的 App：由复选框决定，面积规则不再叠加
+        case .unlisted:
+            if let frame = WindowManager.getFrame(window), WindowManager.isSmallWindow(frame) { return nil }
+        }
         return window
     }
 
@@ -403,6 +427,14 @@ final class AdaptiveCenterManager {
             return
         }
 
+        // 第三层：「忽略的 App」优先于面积规则。勾了「自适应居中」的条目透明跳过；
+        // 没勾的（如默认 iPhone 镜像）正常参与，不再受「最小窗口面积」限制。
+        let rule = trackingRule(for: window)
+        if case .skip = rule {
+            skipTransiently()
+            return
+        }
+
         guard let frame = WindowManager.getFrame(window),
               let screen = screen(for: frame) else {
             lastWindow = nil
@@ -411,13 +443,16 @@ final class AdaptiveCenterManager {
             return
         }
 
-        // 小窗口（iPhone 镜像 326×719、调度中心缩略窗口 / 系统小浮层 / 最小化窗口等）：
+        // 小窗口（调度中心缩略窗口 / 系统小浮层 / 最小化窗口等）：
         // 整个服务透明跳过 —— 不写位置、不补偿、不吸附、不震动；
         // lastWindow / lastFrame / records 一律不动，退出调度中心回到原窗口时
         // 不会被误判为「首次激活」而居中。
-        if WindowManager.isSmallWindow(frame) {
-            skipTransiently()
-            return
+        // 只对「未列入忽略列表」的 App 生效：列表里的由复选框显式决定（见 TrackingRule）。
+        if case .unlisted = rule {
+            if WindowManager.isSmallWindow(frame) {
+                skipTransiently()
+                return
+            }
         }
 
         let center = visibleCenter(of: screen)

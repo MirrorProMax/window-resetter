@@ -34,6 +34,8 @@ enum Preferences {
     static let snapRatioKey = "snapRatioPercent"
     /// 「吸附率」默认值（百分数）。
     static let snapRatioPercentDefault = 8
+    /// 「忽略的 App」列表（UserDefaults 里存 `[IgnoredApp]` 的 JSON 数据）。
+    static let ignoredAppsKey = "ignoredApps"
 
     /// 读取左右预留（整数，逻辑分辨率 / 点）；未设置时默认 `marginDefault`，非法值收敛到 0~10000。
     /// 允许 0（用户显式设为 0 就是「不预留」），不再把 0 当成未设置而回落到默认值。
@@ -167,6 +169,50 @@ enum Preferences {
     static func narrowWidth(for screen: NSScreen) -> CGFloat {
         narrowWidthSource.width(for: screen)
     }
+
+    // MARK: - 忽略的 App
+
+    /// 内置默认项：iPhone 镜像（`com.apple.ScreenContinuity`，运行时实测的 Bundle ID）。
+    /// 「自适应居中」不勾选（居中照常生效），「复位」勾选（点菜单栏图标不把它拉成大窗口）。
+    static let ignoredAppsDefault: [IgnoredApp] = [
+        IgnoredApp(bundleID: "com.apple.ScreenContinuity",
+                   name: "iPhone镜像",
+                   skipAdaptiveCenter: false,
+                   skipReset: true),
+    ]
+
+    /// 读取忽略列表。键未写入（老版本升级）或损坏时回落到内置默认项；
+    /// 显式存过空数组则保持为空，用户删掉 iPhone 镜像后不会被重新加回来。
+    /// 顺带按 Bundle ID 去重，避免手工写偏好造成同一 App 出现多行。
+    static var ignoredApps: [IgnoredApp] {
+        guard let data = UserDefaults.standard.data(forKey: ignoredAppsKey),
+              let apps = try? JSONDecoder().decode([IgnoredApp].self, from: data) else {
+            return ignoredAppsDefault
+        }
+        var seen = Set<String>()
+        return apps.filter { !$0.bundleID.isEmpty && seen.insert($0.bundleID).inserted }
+    }
+
+    static func setIgnoredApps(_ apps: [IgnoredApp]) {
+        guard let data = try? JSONEncoder().encode(apps) else { return }
+        UserDefaults.standard.set(data, forKey: ignoredAppsKey)
+    }
+
+    /// 首次启动时把默认列表写入 UserDefaults，让偏好状态显式可见（`defaults read` 可查）。
+    static func registerIgnoredAppsDefault() {
+        if UserDefaults.standard.object(forKey: ignoredAppsKey) == nil {
+            setIgnoredApps(ignoredAppsDefault)
+        }
+    }
+
+    /// 按 Bundle ID 查忽略规则；不在列表里返回 nil。
+    /// - Note: **列表优先级高于「最小窗口面积」规则** —— 列表里的 App 完全由复选框决定，
+    ///   面积规则不再叠加，否则「不勾选 = 功能生效」会被按尺寸的一刀切悄悄覆盖。
+    ///   未列入列表的 App 由调用方继续走面积规则。
+    static func ignoredApp(for bundleID: String) -> IgnoredApp? {
+        guard !bundleID.isEmpty else { return nil }
+        return ignoredApps.first { $0.bundleID == bundleID }
+    }
 }
 
 /// 窄窗口模式下窗口宽度的取值方式。
@@ -231,4 +277,24 @@ extension Preferences {
     static func setWindowMode(_ mode: WindowMode, for bundleID: String) {
         UserDefaults.standard.set(mode.rawValue, forKey: modeKey(for: bundleID))
     }
+}
+
+/// 「忽略的 App」列表里的一项。两个布尔量的含义都是**勾选 = 该功能对此 App 不生效**。
+/// 以 Bundle ID 为唯一标识（`id`），比显示名稳定：系统本地化名、用户改 App 名都不会失效。
+struct IgnoredApp: Codable, Identifiable, Equatable {
+    var bundleID: String
+    /// 设置界面显示的名称（来自 `NSRunningApplication.localizedName` 或 App 包信息）。
+    var name: String
+    /// 勾选：自适应居中不生效。
+    var skipAdaptiveCenter: Bool
+    /// 勾选：手动复位（点菜单栏图标）不生效。
+    var skipReset: Bool
+
+    var id: String { bundleID }
+}
+
+/// 受忽略列表控制的两条功能路径。
+enum IgnoreFeature {
+    case adaptiveCenter
+    case reset
 }
