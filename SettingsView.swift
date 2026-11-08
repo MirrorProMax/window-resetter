@@ -178,7 +178,7 @@ struct SettingsView: View {
 
     var body: some View {
         // 排序原则：运行时逻辑链上越早参与判断、越能覆盖下游设置的项，位置越靠前。
-        // 启动 → 自适应居中（吸附率 / 震动强度 / 最小窗口面积） → 忽略的 App（优先级高于面积规则）
+        // 启动（独立分组）→ 忽略的 App（优先级高于面积规则）→ 自适应居中（吸附率 / 震动强度 / 最小窗口面积）
         // → 竖屏自适应 → 窄窗口模式 → 最小宽度 → 台前调度 / 边距 → 动画（只改到达方式）。
         // 最小宽度排在左右预留之前：它会覆盖后者计算出的宽度；
         // 自适应居中的三个子项只在开关打开时显示，与「时长」的条件显示保持一致。
@@ -193,47 +193,8 @@ struct SettingsView: View {
                     }
                 ))
                 .help("随 macOS 登录时自动启动本应用。")
-
-                Toggle("自适应居中", isOn: Binding(
-                    get: { adaptiveCenter },
-                    set: { newValue in
-                        adaptiveCenter = newValue
-                        AdaptiveCenterManager.shared.setEnabled(newValue)
-                    }
-                ))
-                .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心磁吸范围各震动一下（范围由下方「吸附率」设定），进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及未列入「忽略的 App」列表的小窗口（面积不超过下方「最小窗口面积」）不参与；在列表里勾了「自适应居中」的 App 也不参与。")
-
-                if adaptiveCenter {
-                    HStack {
-                        Text("吸附率")
-                        TextField("整数", value: $snapRatioPercent, formatter: ratioFormatter)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                            .help(snapRatioHelp)
-                        Text("%")
-                            .help(snapRatioHelp)
-                    }
-
-                    Picker("震动强度", selection: $hapticStrengthRaw) {
-                        Text("轻").tag(0)
-                        Text("中").tag(1)
-                        Text("强").tag(2)
-                    }
-                    .pickerStyle(.segmented)
-                    .help(hapticStrengthHelp)
-
-                    HStack {
-                        Text("最小窗口面积")
-                        TextField("整数", value: $minimumWindowArea, formatter: areaFormatter)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
-                            .help(minimumAreaHelp)
-                        Text("逻辑分辨率²")
-                            .help(minimumAreaHelp)
-                    }
-                }
             } header: {
-                Text("启动与自适应")
+                Text("启动")
             }
 
             Section {
@@ -297,6 +258,49 @@ struct SettingsView: View {
                 Text("忽略的 App")
             } footer: {
                 Text("勾选哪个，哪个功能就对该 App 不生效。列表里的 App 是显式设定，不受「最小窗口面积」限制；未列出的仍按面积规则跳过。默认 iPhone 镜像只忽略复位，自适应居中照常生效。")
+            }
+
+            Section {
+                Toggle("自适应居中", isOn: Binding(
+                    get: { adaptiveCenter },
+                    set: { newValue in
+                        adaptiveCenter = newValue
+                        AdaptiveCenterManager.shared.setEnabled(newValue)
+                    }
+                ))
+                .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心磁吸范围各震动一下（范围由下方「吸附率」设定），进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及未列入「忽略的 App」列表的小窗口（面积不超过下方「最小窗口面积」）不参与；在列表里勾了「自适应居中」的 App 也不参与。")
+
+                if adaptiveCenter {
+                    HStack {
+                        Text("吸附率")
+                        TextField("整数", value: $snapRatioPercent, formatter: ratioFormatter)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                            .help(snapRatioHelp)
+                        Text("%")
+                            .help(snapRatioHelp)
+                    }
+
+                    Picker("震动强度", selection: $hapticStrengthRaw) {
+                        Text("轻").tag(0)
+                        Text("中").tag(1)
+                        Text("强").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    .help(hapticStrengthHelp)
+
+                    HStack {
+                        Text("最小窗口面积")
+                        TextField("整数", value: $minimumWindowArea, formatter: areaFormatter)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                            .help(minimumAreaHelp)
+                        Text("逻辑分辨率²")
+                            .help(minimumAreaHelp)
+                    }
+                }
+            } header: {
+                Text("自适应居中")
             }
 
             Section {
@@ -365,11 +369,12 @@ struct SettingsView: View {
     }
 
     /// 设置窗口高度：两处条件显示的控件与「忽略的 App」列表行数都会改变行数。
-    /// 基础 420（含「最小宽度」行）；自适应居中开 → 多三行（吸附率 / 震动强度 / 最小窗口面积）；
+    /// 基础 450（含「最小宽度」行，且「启动」拆成独立分组后多一个 Section 标题）；
+    /// 自适应居中开 → 多三行（吸附率 / 震动强度 / 最小窗口面积）；
     /// 平滑变化开 → 多一行「时长」；忽略列表另加表头 / 添加按钮 / 说明与每行高度。
     /// 封顶 760：Form 自带滚动容器，列表很长时滚动查看即可，避免窗口高过屏幕被系统裁切。
     private var windowHeight: CGFloat {
-        let content = 420 + (adaptiveCenter ? 90 : 0) + (smoothAnimation ? 50 : 0)
+        let content = 450 + (adaptiveCenter ? 90 : 0) + (smoothAnimation ? 50 : 0)
             + 150 + CGFloat(ignoredStore.apps.count) * 32
         return min(content, 760)
     }
