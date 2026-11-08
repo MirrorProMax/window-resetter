@@ -4,6 +4,12 @@
 
 纯 Swift + AppKit / SwiftUI，无第三方依赖，不联网、不收集数据。
 
+## 宣传片
+
+- 30 秒竖屏版（抖音 / 小红书）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
+- 拍摄脚本（含 75 秒主版分镜与 30 秒竖屏剪辑清单）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
+- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video.py](tools/render_douyin_video.py) 重新渲染（需 ffmpeg 与 Pillow）。
+
 ## 功能
 
 **复位 / 切换**
