@@ -27,10 +27,82 @@ jobs:
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
+      - name: 检查 Apple 公证凭据
+        id: notarize
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: |
+          if [ -n "$CERT_P12" ] && [ -n "$CERT_PASSWORD" ] && [ -n "$API_KEY" ] && [ -n "$API_KEY_ID" ] && [ -n "$API_ISSUER" ] && [ -n "$SIGN_IDENTITY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "公证凭据齐全：本次使用 Developer ID 签名并自动公证"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置完整的 Apple 公证 Secrets，按原方式发布自签版本（下载者需手动放行一次）"
+          fi
+
+      - name: 导入 Developer ID 证书
+        if: steps.notarize.outputs.enabled == 'true'
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/window-resetter.keychain-db"
+          KEYCHAIN_PWD="$(openssl rand -base64 24)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN" >/dev/null
+          EXISTING="$(security list-keychains -d user | sed 's/"//g' | tr '\n' ' ')"
+          security list-keychains -d user -s "$KEYCHAIN" $EXISTING
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep -F "$SIGN_IDENTITY" || {
+            echo "::error::钥匙串中找不到签名身份：$SIGN_IDENTITY"
+            exit 1
+          }
+          echo "KEYCHAIN_PATH=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PWD=$KEYCHAIN_PWD" >> "$GITHUB_ENV"
+
+      - name: 写入 App Store Connect API 密钥
+        if: steps.notarize.outputs.enabled == 'true'
+        env:
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$API_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          echo "NOTARY_KEY=$KEY" >> "$GITHUB_ENV"
+
       - name: 构建 Universal 应用
+        env:
+          SIGN_IDENTITY: "${{ steps.notarize.outputs.enabled == 'true' && secrets.APPLE_SIGN_IDENTITY || '' }}"
         run: ./build.sh --universal
 
-      - name: 打包 DMG / ZIP / SHA256
+      - name: 公证并装订 .app
+        if: steps.notarize.outputs.enabled == 'true'
+        env:
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          APP="build/窗口复位器.app"
+          SUBMIT_ZIP="$RUNNER_TEMP/notarize-app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$SUBMIT_ZIP"
+          xcrun notarytool submit "$SUBMIT_ZIP" \
+            --key "$NOTARY_KEY" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --wait || {
+            echo "::error::.app 公证未通过，请检查 Developer ID 签名、Hardened Runtime 与安全时间戳"
+            exit 1
+          }
+          # ZIP 不能直接 staple，必须先装订 .app，再用装订后的 .app 重新打包分发 ZIP。
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+
+      - name: 打包 DMG / ZIP
         run: |
           V="${{ steps.ver.outputs.version }}"
           OUT="build/release"
@@ -41,12 +113,41 @@ jobs:
           # 资产名统一用 ASCII：gh 上传含中文的文件名时会吞掉中文，导致 SHA256SUMS 对不上。
           hdiutil create -volname "窗口复位器 $V" -srcfolder "$STAGE" -ov -format UDZO "$OUT/WindowResetter-$V.dmg"
           ditto -c -k --sequesterRsrc --keepParent "build/窗口复位器.app" "$OUT/WindowResetter-$V.zip"
-          (cd "$OUT" && shasum -a 256 "WindowResetter-$V.dmg" "WindowResetter-$V.zip" > SHA256SUMS.txt)
+
+      - name: 公证并装订 DMG
+        if: steps.notarize.outputs.enabled == 'true'
+        env:
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          DMG="build/release/WindowResetter-$V.dmg"
+          xcrun notarytool submit "$DMG" \
+            --key "$NOTARY_KEY" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --wait || {
+            echo "::error::DMG 公证未通过"
+            exit 1
+          }
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+      - name: 生成 SHA256 校验和
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          (cd build/release && shasum -a 256 "WindowResetter-$V.dmg" "WindowResetter-$V.zip" > SHA256SUMS.txt)
 
       - name: 验证产物
+        env:
+          V: ${{ steps.ver.outputs.version }}
         run: |
-          lipo -info "build/窗口复位器.app/Contents/MacOS/WindowResizer"
-          codesign --verify --deep "build/窗口复位器.app"
+          APP="build/窗口复位器.app"
+          lipo -info "$APP/Contents/MacOS/WindowResizer"
+          codesign --verify --deep "$APP"
+          if [ "${{ steps.notarize.outputs.enabled }}" = "true" ]; then
+            spctl -a -vvv "$APP"
+            xcrun stapler validate "$APP"
+            xcrun stapler validate "build/release/WindowResetter-$V.dmg"
+          fi
 
       - name: 创建 / 更新 Release 并上传资产
         env:
@@ -58,3 +159,10 @@ jobs:
           gh release create "$GITHUB_REF_NAME" build/release/* \
             --title "窗口复位器 v$V" \
             --notes-file RELEASE_NOTES.md
+
+      - name: 清理临时钥匙串
+        if: always() && steps.notarize.outputs.enabled == 'true'
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          fi

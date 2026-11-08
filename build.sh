@@ -5,6 +5,11 @@
 #   ./build.sh               按本机 CPU 架构编译（日常开发，最快）
 #   ./build.sh --universal   编译 Universal 双架构（arm64 + x86_64，发布用）
 #
+# 环境变量（可选，发布用）：
+#   SIGN_IDENTITY="Developer ID Application: 姓名 (TEAMID)"
+#     指定后改用该证书签名，并启用 Hardened Runtime + 安全时间戳，
+#     以满足 Apple 公证的前置要求；不设置时行为与旧版完全一致。
+#
 set -eo pipefail
 
 ARCH_MODE="native"
@@ -72,11 +77,16 @@ sed -e 's/$(EXECUTABLE_NAME)/'"$EXEC_NAME"'/g' \
     -e 's/$(MACOSX_DEPLOYMENT_TARGET)/'"$MIN_OS"'/g' \
     "$SRC_DIR/Info.plist" > "$CONTENTS/Info.plist"
 
-# 优先使用本地自签名证书（身份稳定，TCC 不会每次重新要授权）；否则回退 ad-hoc。
-CODE_SIGN_IDENTITY="WindowResetterSigning"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODE_SIGN_IDENTITY"; then
-    echo "==> 签名（使用本地证书 $CODE_SIGN_IDENTITY，身份稳定）"
-    codesign --force --deep --sign "$CODE_SIGN_IDENTITY" "$APP_DIR"
+# 签名优先级：
+#   1) SIGN_IDENTITY（发布用，Developer ID）→ Hardened Runtime + 安全时间戳，供 Apple 公证
+#   2) 本地自签证书 WindowResetterSigning（日常开发，身份稳定，TCC 不会反复要授权）
+#   3) ad-hoc 签名（兜底）
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+    echo "==> 签名（Developer ID：$SIGN_IDENTITY；Hardened Runtime + 安全时间戳）"
+    codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -q "WindowResetterSigning"; then
+    echo "==> 签名（使用本地证书 WindowResetterSigning，身份稳定）"
+    codesign --force --deep --sign "WindowResetterSigning" "$APP_DIR"
 else
     echo "==> 签名（ad-hoc；如需避免反复授权，请先创建本地证书 WindowResetterSigning）"
     codesign --force --deep --sign - "$APP_DIR"

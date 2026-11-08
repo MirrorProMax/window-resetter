@@ -58,7 +58,7 @@
 | `SHA256SUMS.txt` | 校验下载完整性：`shasum -a 256 -c SHA256SUMS.txt` |
 
 1. 把 `窗口复位器.app` 放进「应用程序」文件夹。
-2. **首次打开**：本项目是个人开源工具，未使用 Apple Developer ID 签名与公证，macOS 会提示「无法验证开发者」。在访达中**右键点击 App → 打开 → 打开**；若仍被拦截，到「系统设置 › 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/窗口复位器.app"` 移除隔离属性。这一步只需做一次，不是文件损坏。
+2. **首次打开**：本项目是个人开源工具，**默认发布版本**未使用 Apple Developer ID 签名与公证，macOS 会提示「无法验证开发者」。在访达中**右键点击 App → 打开 → 打开**；若仍被拦截，到「系统设置 › 隐私与安全性」点「仍要打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/窗口复位器.app"` 移除隔离属性。这一步只需做一次，不是文件损坏；放行后 macOS 会把 App 记为安全性例外，之后双击即可正常启动。若 Release 由已启用公证的流程生成，首次只会弹一次「确定打开？」确认，点「打开」即可。
 3. 首次启动后，在「系统设置 › 隐私与安全性 › 辅助功能」勾选「窗口复位器」，否则无法读取 / 调整窗口。
 4. 之后它常驻菜单栏：左键复位 / 切换窗口，右键打开设置、关于、退出。
 
@@ -79,6 +79,25 @@ open "build/窗口复位器.app"
 首次运行请在「系统设置 › 隐私与安全性 › 辅助功能」中勾选本应用；重新签名或替换 `.app` 后，macOS 可能要求重新授权。
 
 > 默认 Bundle ID 为 `com.example.WindowResizer`，是示例域名。正式分发前请改为自己的反向域名：`build.sh` 的 `BUNDLE_ID` 与工程文件的 `PRODUCT_BUNDLE_IDENTIFIER` 需同步修改。注意更换 Bundle ID 会启用一套新的 `UserDefaults` 偏好。
+
+## 发布者：启用自动公证（可选）
+
+默认发布的是本地自签 / ad-hoc 签名版本，下载者首次打开需手动放行一次。若要做到「下载后双击即可打开」，需加入 Apple Developer Program（中国大陆个人会员 ¥688/年），用 **Developer ID Application** 证书签名并提交 Apple 公证。
+
+在仓库 Settings → Secrets and variables → Actions 中配置以下 6 项：
+
+| Secret | 内容 |
+| --- | --- |
+| `APPLE_SIGN_IDENTITY` | 证书全名，形如 `Developer ID Application: 姓名 (TEAMID)` |
+| `APPLE_CERTIFICATE_P12` | 该证书连私钥导出的 `.p12`，base64 编码后的单行文本 |
+| `APPLE_CERTIFICATE_PASSWORD` | 导出 `.p12` 时设置的密码 |
+| `APPLE_API_KEY` | App Store Connect API Key 的 `.p8` 文件全文（含 BEGIN / END 行） |
+| `APPLE_API_KEY_ID` | Key ID |
+| `APPLE_API_ISSUER` | Issuer ID |
+
+六项齐全时，`.github/workflows/release.yml` 会自动：用 Developer ID 签名（`--options runtime --timestamp`）→ `notarytool` 分别公证 `.app` 与 DMG → `stapler` 装订票据 → `spctl` 校验 → 最后才生成 `SHA256SUMS.txt` 并发布。**缺任意一项会自动降级**为原来的自签流程，发版不会失败。
+
+细节：ZIP 无法直接 staple，流程是先装订 `.app` 再打包 ZIP；签名身份变更后「辅助功能」授权需重新勾选一次；Bundle ID 无需修改，公证不要求自有反向域名。
 
 ## 使用
 
