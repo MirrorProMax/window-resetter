@@ -13,6 +13,7 @@
   - 字幕按「一句旁白 = 一屏字幕」切换，切换点对齐镜头起点；时间轴按 8 段配音实测时长校准，节奏为「首镜 2.25 秒快切 → 中段静止 → 片尾定格」。
   - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+、需「辅助功能」权限、未签名需右键打开；**不含多显示器 / 跨屏、iPad 商标类比**相关表述。
 - B 站横版封面三版（1146×717，PNG + JPG，合规净版）：[assets/bilibili/](assets/bilibili/) — A 痛点反差 / B 功能演示 / C 极简品牌，附三版对照图；可用 [tools/render_bilibili_covers.py](tools/render_bilibili_covers.py) 重新渲染。
+- 小红书 / 抖音竖版封面各三版（合规净版，PNG + JPG）：[assets/xiaohongshu/](assets/xiaohongshu/)（1080×1440，3:4，A 痛点共鸣 / B 清单种草 / C 极简品牌）、[assets/douyin/](assets/douyin/)（1080×1920，9:16，A 强钩子 / B 结果反差 / C 品牌定格），各附三版对照图；可用 [tools/render_social_covers.py](tools/render_social_covers.py) 一键重出六版。
 - 分镜脚本 v3（成片校准时间轴、8 段旁白稿、改动对照、发布文案、口径禁区）：[docs/宣传短视频分镜脚本-v3.md](docs/宣传短视频分镜脚本-v3.md)
 - 分镜脚本 v2（历史版本，含 9 镜时间轴与「待修订项」）：[docs/宣传短视频分镜脚本-v2.md](docs/宣传短视频分镜脚本-v2.md)
 - 早期脚本（75 秒主版分镜 + 30 秒竖屏剪辑清单）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
