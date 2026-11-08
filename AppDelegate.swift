@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 「自适应居中」默认开启：首次启动把默认值固化到偏好，再按偏好启动常驻监听服务。
         // 设置里的开关可即时启停；用户显式关闭后不会再被重新打开。
         Preferences.registerAdaptiveCenterDefault()
+        // 旧版单一「最小窗口面积」迁移到拆分后的两个独立阈值（已有设置不丢）。
+        Preferences.registerWindowAreaDefaults()
         // 「忽略的 App」默认含 iPhone 镜像；首次启动固化到偏好，之后完全尊重用户增删。
         Preferences.registerIgnoredAppsDefault()
         AdaptiveCenterManager.shared.setEnabled(Preferences.adaptiveCenter)

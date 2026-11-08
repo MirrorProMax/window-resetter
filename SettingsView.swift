@@ -73,7 +73,7 @@ struct SettingsView: View {
     /// 「左右预留」的悬停提示（标签与输入框共用）。
     private let marginHelp = "整数，宽模式左右各预留该值（逻辑分辨率）；默认 245，范围 0~10000（0 = 不预留）。仅在「台前调度检测」开启且系统台前调度开启时生效；屏幕较小时会被「最小宽度」自动压缩，甚至减到 0。" + SettingsView.unitNote
 
-    /// 最小窗口面积输入框只允许 0~100000000 的整数（0 = 不启用该规则）。
+    /// 窗口面积输入框只允许 0~100000000 的整数（0 = 不启用该规则）。
     private let areaFormatter: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .none
@@ -97,16 +97,21 @@ struct SettingsView: View {
     /// 「吸附率」的悬停提示（标签与输入框共用）。
     private let snapRatioHelp = "中心磁吸范围占屏幕可见区宽 / 高的百分比（整数，默认 8，范围 1~20）。窗口中心同时落在水平 ±吸附率×可见宽、垂直 ±吸附率×可见高内时：进 / 出边界各震动一次，进入后松手吸附到中心，并让固定在侧边的窗口恢复自动居中。数值越大越容易吸住，但也越容易把刻意放偏的窗口拉回中心；想保留旧版手感可填 5。"
 
-    /// 「最小窗口面积」的悬停提示（标签与输入框共用）。
-    private let minimumAreaHelp = "窗口宽×高不超过此值即视为「小窗口」：手动复位与自适应居中都不参与（不居中、不补偿、不磁吸、不震动、不写位置）。默认 240000（逻辑分辨率²），基准是 iPhone 镜像窗口 326×719 = 234394；0 = 不启用。也用于排除调度中心缩略窗口、系统小浮层、最小化窗口等；正常大窗口不受影响。注意：本规则只对「忽略的 App」列表之外的 App 生效，列表里的条目完全由复选框决定，改这里不会影响它们（想让 iPhone 镜像重新参与复位，取消它在列表里的「复位」勾选即可）。" + SettingsView.unitNote
+    /// 「忽略自适应居中的窗口面积」的悬停提示（标签与输入框共用）。
+    private let adaptiveCenterAreaHelp = "窗口宽×高不超过此值时，自适应居中对该窗口不生效（不居中、不补偿、不磁吸、不震动、不写位置）。默认 240000（逻辑分辨率²），基准是 iPhone 镜像窗口 326×719 = 234394；0 = 不启用。用于排除调度中心缩略窗口、系统小浮层、最小化窗口等；正常大窗口不受影响。只影响「忽略的 App」列表之外的 App，列表里的条目完全由复选框决定。" + SettingsView.unitNote
 
-    // 按界面上的优先级顺序声明：启动 → 自适应居中（吸附率 / 震动强度 / 最小窗口面积） → 竖屏自适应
-    // → 窄窗口模式 → 最小宽度 → 台前调度 / 边距 → 动画。
+    /// 「忽略复位的窗口面积」的悬停提示（标签与输入框共用）。
+    private let resetAreaHelp = "窗口宽×高不超过此值时，点菜单栏图标复位 / 切换模式对该窗口不生效。默认 240000（逻辑分辨率²）；0 = 不启用。与上面的自适应居中阈值互相独立，可分别调整。只影响「忽略的 App」列表之外的 App；想让默认的 iPhone 镜像重新参与复位，取消它在列表里的「复位」勾选即可。" + SettingsView.unitNote
+
+    // 按界面上的优先级顺序声明：启动 → 窗口面积（两个独立阈值）→ 忽略的 App
+    // → 自适应居中（吸附率 / 震动强度）→ 竖屏自适应 → 窄窗口模式 → 最小宽度
+    // → 台前调度 / 边距 → 动画。
     @AppStorage(Preferences.launchKey) private var launchAtLogin: Bool = false
+    @AppStorage(Preferences.ignoreAdaptiveCenterAreaKey) private var ignoreAdaptiveCenterArea: Int = Preferences.windowAreaDefault
+    @AppStorage(Preferences.ignoreResetAreaKey) private var ignoreResetArea: Int = Preferences.windowAreaDefault
     @AppStorage(Preferences.adaptiveCenterKey) private var adaptiveCenter: Bool = Preferences.adaptiveCenterDefault
     @AppStorage(Preferences.snapRatioKey) private var snapRatioPercent: Int = Preferences.snapRatioPercentDefault
     @AppStorage(Preferences.hapticStrengthKey) private var hapticStrengthRaw: Int = Preferences.hapticStrengthDefault
-    @AppStorage(Preferences.minimumWindowAreaKey) private var minimumWindowArea: Int = Preferences.minimumWindowAreaDefault
     @AppStorage(Preferences.portraitAdaptiveKey) private var portraitAdaptive: Bool = false
     @AppStorage(Preferences.narrowWidthSourceKey) private var narrowWidthSourceRaw: Int = 0
     @AppStorage(Preferences.minimumWidthKey) private var minimumWidth: Int = Preferences.minimumWidthDefault
@@ -178,10 +183,13 @@ struct SettingsView: View {
 
     var body: some View {
         // 排序原则：运行时逻辑链上越早参与判断、越能覆盖下游设置的项，位置越靠前。
-        // 启动（独立分组）→ 忽略的 App（优先级高于面积规则）→ 自适应居中（吸附率 / 震动强度 / 最小窗口面积）
-        // → 竖屏自适应 → 窄窗口模式 → 最小宽度 → 台前调度 / 边距 → 动画（只改到达方式）。
+        // 启动（独立分组）→ 窗口面积（两个独立阈值）→ 忽略的 App（优先级高于面积规则）
+        // → 自适应居中（吸附率 / 震动强度）→ 竖屏自适应 → 窄窗口模式 → 最小宽度
+        // → 台前调度 / 边距 → 动画（只改到达方式）。
+        // 两个面积阈值单独成组、放在忽略列表之上：它们是「按尺寸」的全局规则，
+        // 忽略列表是「按 App」的显式设定（优先级更高），先看到规则再看例外更顺。
         // 最小宽度排在左右预留之前：它会覆盖后者计算出的宽度；
-        // 自适应居中的三个子项只在开关打开时显示，与「时长」的条件显示保持一致。
+        // 自适应居中的两个子项只在开关打开时显示，与「时长」的条件显示保持一致。
         // 说明文字一律用 .help 挂在控件上：macOS 上光标悬停即显示 tooltip，界面只留控件本身。
         Form {
             Section {
@@ -195,6 +203,32 @@ struct SettingsView: View {
                 .help("随 macOS 登录时自动启动本应用。")
             } header: {
                 Text("启动")
+            }
+
+            Section {
+                HStack {
+                    Text("忽略自适应居中的窗口面积")
+                    TextField("", value: $ignoreAdaptiveCenterArea, formatter: areaFormatter)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                        .help(adaptiveCenterAreaHelp)
+                    Text("逻辑分辨率²")
+                        .help(adaptiveCenterAreaHelp)
+                }
+
+                HStack {
+                    Text("忽略复位的窗口面积")
+                    TextField("", value: $ignoreResetArea, formatter: areaFormatter)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                        .help(resetAreaHelp)
+                    Text("逻辑分辨率²")
+                        .help(resetAreaHelp)
+                }
+            } header: {
+                Text("窗口面积")
+            } footer: {
+                Text("窗口宽×高不超过对应数值时，该功能对这个窗口不生效；填 0 表示该规则不启用。两项互相独立，且只对下方「忽略的 App」列表之外的 App 生效。")
             }
 
             Section {
@@ -257,7 +291,7 @@ struct SettingsView: View {
             } header: {
                 Text("忽略的 App")
             } footer: {
-                Text("勾选哪个，哪个功能就对该 App 不生效。列表里的 App 是显式设定，不受「最小窗口面积」限制；未列出的仍按面积规则跳过。默认 iPhone 镜像只忽略复位，自适应居中照常生效。")
+                Text("勾选哪个，哪个功能就对该 App 不生效。列表里的 App 是显式设定，不受上方两个面积阈值限制；未列出的仍按面积规则跳过。默认 iPhone 镜像只忽略复位，自适应居中照常生效。")
             }
 
             Section {
@@ -268,12 +302,12 @@ struct SettingsView: View {
                         AdaptiveCenterManager.shared.setEnabled(newValue)
                     }
                 ))
-                .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心磁吸范围各震动一下（范围由下方「吸附率」设定），进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及未列入「忽略的 App」列表的小窗口（面积不超过下方「最小窗口面积」）不参与；在列表里勾了「自适应居中」的 App 也不参与。")
+                .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心磁吸范围各震动一下（范围由下方「吸附率」设定），进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及未列入「忽略的 App」列表、且面积不超过「忽略自适应居中的窗口面积」的小窗口不参与；在列表里勾了「自适应居中」的 App 也不参与。")
 
                 if adaptiveCenter {
                     HStack {
                         Text("吸附率")
-                        TextField("整数", value: $snapRatioPercent, formatter: ratioFormatter)
+                        TextField("", value: $snapRatioPercent, formatter: ratioFormatter)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
                             .help(snapRatioHelp)
@@ -288,16 +322,6 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .help(hapticStrengthHelp)
-
-                    HStack {
-                        Text("最小窗口面积")
-                        TextField("整数", value: $minimumWindowArea, formatter: areaFormatter)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
-                            .help(minimumAreaHelp)
-                        Text("逻辑分辨率²")
-                            .help(minimumAreaHelp)
-                    }
                 }
             } header: {
                 Text("自适应居中")
@@ -316,7 +340,7 @@ struct SettingsView: View {
 
                 HStack {
                     Text("最小宽度")
-                    TextField("整数", value: $minimumWidth, formatter: pixelFormatter)
+                    TextField("", value: $minimumWidth, formatter: pixelFormatter)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                         .help(minimumWidthHelp)
@@ -333,7 +357,7 @@ struct SettingsView: View {
 
                 HStack {
                     Text("左右预留")
-                    TextField("整数", value: $margin, formatter: pixelFormatter)
+                    TextField("", value: $margin, formatter: pixelFormatter)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                         .help(marginHelp)
@@ -351,7 +375,7 @@ struct SettingsView: View {
                 if smoothAnimation {
                     HStack {
                         Text("动画时长")
-                        TextField("整数", value: $animationDurationMs, formatter: msFormatter)
+                        TextField("", value: $animationDurationMs, formatter: msFormatter)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 100)
                             .help("单位毫秒，默认 1000，有效范围 16~60000。")
@@ -369,12 +393,13 @@ struct SettingsView: View {
     }
 
     /// 设置窗口高度：两处条件显示的控件与「忽略的 App」列表行数都会改变行数。
-    /// 基础 450（含「最小宽度」行，且「启动」拆成独立分组后多一个 Section 标题）；
-    /// 自适应居中开 → 多三行（吸附率 / 震动强度 / 最小窗口面积）；
+    /// 基础 420（含「最小宽度」行；原「最小窗口面积」已移出「自适应居中」分组）；
+    /// 新增「窗口面积」独立分组 → 约 130（标题 + 两行 + 说明）；
+    /// 自适应居中开 → 多两行（吸附率 / 震动强度）；
     /// 平滑变化开 → 多一行「时长」；忽略列表另加表头 / 添加按钮 / 说明与每行高度。
     /// 封顶 760：Form 自带滚动容器，列表很长时滚动查看即可，避免窗口高过屏幕被系统裁切。
     private var windowHeight: CGFloat {
-        let content = 450 + (adaptiveCenter ? 90 : 0) + (smoothAnimation ? 50 : 0)
+        let content = 420 + 130 + (adaptiveCenter ? 60 : 0) + (smoothAnimation ? 50 : 0)
             + 150 + CGFloat(ignoredStore.apps.count) * 32
         return min(content, 760)
     }

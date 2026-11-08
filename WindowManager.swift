@@ -39,12 +39,12 @@ struct WindowManager {
         let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
 
         // 「忽略的 App」优先：列表里的 App 完全由「复位」复选框决定，不再叠加面积规则。
-        // 未列出的 App 沿用「小窗口」规则（326×719 等尺寸不超过阈值的窗口不复位，
-        // 位置由用户自己摆，点菜单栏图标也不该把它拉成大窗口或切换宽 / 窄模式）。
+        // 未列出的 App 才看面积：宽×高不超过「忽略复位的窗口面积」的窗口不复位，
+        // 位置由用户自己摆，点菜单栏图标也不该把它拉成大窗口或切换宽 / 窄模式。
         if let rule = Preferences.ignoredApp(for: bundleID) {
             guard !rule.skipReset else { return }
         } else {
-            guard !isSmallWindow(frame) else { return }
+            guard !isIgnoredByArea(frame, for: .reset) else { return }
         }
 
         // 找到窗口中心所在的屏幕。
@@ -90,18 +90,19 @@ struct WindowManager {
         }
     }
 
-    // MARK: - 小窗口判定
+    // MARK: - 按面积忽略窗口
 
-    /// 是否为「小窗口」：面积（宽×高）不超过设置里的「最小窗口面积」阈值。
-    /// 判定用 AX 读到的逻辑尺寸（点 pt），与设置项单位一致；`0` = 不启用该规则。
-    /// iPhone 镜像主窗口 326×719 = 234_394 是本次阈值的基准；调度中心缩略窗口、
-    /// 系统小浮层、最小化窗口等同属这一类。这些窗口既不参与手动复位，也不参与
-    /// 自适应居中（不写位置 / 不磁吸 / 不震动）。
+    /// 该窗口是否因面积被指定功能路径忽略：面积（宽×高）不超过该功能对应的阈值。
+    /// - 自适应居中 → 「忽略自适应居中的窗口面积」
+    /// - 手动复位   → 「忽略复位的窗口面积」
+    /// 判定用 AX 读到的逻辑尺寸（点 pt），与设置项单位一致；阈值 `0` = 不启用该规则。
+    /// iPhone 镜像主窗口 326×719 = 234_394 是默认阈值的基准；调度中心缩略窗口、
+    /// 系统小浮层、最小化窗口等同属这一类。
     /// - Note: 只对**未列入「忽略的 App」列表**的 App 生效：列表里的条目由复选框
     ///   显式决定，面积规则不再叠加（否则「不勾选 = 功能生效」会被悄悄覆盖）。
     /// 用「不超过」而非「小于」，保证「这个尺寸及以下」被完整覆盖。
-    static func isSmallWindow(_ frame: CGRect) -> Bool {
-        let threshold = Preferences.minimumWindowArea
+    static func isIgnoredByArea(_ frame: CGRect, for feature: IgnoreFeature) -> Bool {
+        let threshold = Preferences.windowAreaThreshold(for: feature)
         guard threshold > 0 else { return false }
         return frame.width * frame.height <= CGFloat(threshold)
     }

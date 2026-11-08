@@ -28,8 +28,12 @@ enum Preferences {
     static let animationDurationKey = "animationDurationMs"
     /// 触控板反馈强度档位（见 `HapticStrength`）。
     static let hapticStrengthKey = "hapticStrength"
-    /// 「小窗口」面积阈值（宽×高，逻辑分辨率² / 点²；0 = 不启用该规则）。手动复位与自适应居中共用。
-    static let minimumWindowAreaKey = "minimumWindowArea"
+    /// 「忽略自适应居中的窗口面积」阈值（宽×高，逻辑分辨率² / 点²；0 = 不启用该规则）。
+    static let ignoreAdaptiveCenterAreaKey = "ignoreAdaptiveCenterArea"
+    /// 「忽略复位的窗口面积」阈值（宽×高，逻辑分辨率² / 点²；0 = 不启用该规则）。
+    static let ignoreResetAreaKey = "ignoreResetArea"
+    /// 旧版单一「最小窗口面积」键：仅用于启动时把已有设置迁移到上面两个新键，值保持不变。
+    static let legacyMinimumWindowAreaKey = "minimumWindowArea"
     /// 「吸附率」：中心磁吸范围占屏幕可见区宽 / 高的百分比（整数，默认 8，范围 1~20）。
     static let snapRatioKey = "snapRatioPercent"
     /// 「吸附率」默认值（百分数）。
@@ -138,20 +142,36 @@ enum Preferences {
         return HapticStrength(rawValue: UserDefaults.standard.integer(forKey: hapticStrengthKey)) ?? .strong
     }
 
-    /// 「小窗口」面积阈值默认值（宽×高，逻辑分辨率² / 点²）。
-    /// 取 iPhone 镜像主窗口 326×719 = 234_394 向上留余量后的 240_000：
-    /// 面积不超过该值的窗口视为小窗口，手动复位与自适应居中都不参与。
-    /// 覆盖 iPhone 镜像、调度中心缩略窗口、系统小浮层、最小化窗口等。
-    static let minimumWindowAreaDefault = 240_000
+    /// 两个面积阈值的共用默认值（宽×高，逻辑分辨率² / 点²）。
+    /// 取 iPhone 镜像主窗口 326×719 = 234_394 向上留余量后的 240_000。
+    /// 拆分后两项各自独立，但默认都沿用此值，因此升级后行为与旧版「最小窗口面积」完全一致。
+    /// 覆盖调度中心缩略窗口、系统小浮层、最小化窗口等。
+    static let windowAreaDefault = 240_000
 
-    /// 读取最小窗口面积；键未写入时按默认值，非法值收敛到 0~100000000。
-    /// `0` = 不启用该规则（所有窗口都参与）。
-    static var minimumWindowArea: Int {
-        guard UserDefaults.standard.object(forKey: minimumWindowAreaKey) != nil else {
-            return minimumWindowAreaDefault
+    /// 读取某条功能路径忽略小窗口的面积阈值；键未写入时按默认值，非法值收敛到 0~100000000。
+    /// `0` = 不启用该规则（该功能对所有尺寸的窗口都参与）。
+    static func windowAreaThreshold(for feature: IgnoreFeature) -> Int {
+        let key: String
+        switch feature {
+        case .adaptiveCenter: key = ignoreAdaptiveCenterAreaKey
+        case .reset: key = ignoreResetAreaKey
         }
-        let v = UserDefaults.standard.integer(forKey: minimumWindowAreaKey)
+        guard UserDefaults.standard.object(forKey: key) != nil else { return windowAreaDefault }
+        let v = UserDefaults.standard.integer(forKey: key)
         return min(100_000_000, max(0, v))
+    }
+
+    /// 首次启动时把旧版单一「最小窗口面积」迁移到拆分后的两个独立阈值。
+    /// 两个新键各自判断：已存在（含用户显式设过 0）完全不动；旧键不存在时用默认值播种。
+    /// 旧键保留不删，方便回滚到旧版。
+    static func registerWindowAreaDefaults() {
+        let d = UserDefaults.standard
+        let seed = d.object(forKey: legacyMinimumWindowAreaKey) != nil
+            ? min(100_000_000, max(0, d.integer(forKey: legacyMinimumWindowAreaKey)))
+            : windowAreaDefault
+        for key in [ignoreAdaptiveCenterAreaKey, ignoreResetAreaKey] where d.object(forKey: key) == nil {
+            d.set(seed, forKey: key)
+        }
     }
 
     /// 读取中心磁吸范围比例（0~1 的小数）；未设置按默认 8%，非法值收敛到 1~20%。
@@ -206,8 +226,9 @@ enum Preferences {
     }
 
     /// 按 Bundle ID 查忽略规则；不在列表里返回 nil。
-    /// - Note: **列表优先级高于「最小窗口面积」规则** —— 列表里的 App 完全由复选框决定，
-    ///   面积规则不再叠加，否则「不勾选 = 功能生效」会被按尺寸的一刀切悄悄覆盖。
+    /// - Note: **列表优先级高于两个面积阈值** —— 列表里的 App 完全由复选框决定，
+    ///   「忽略自适应居中的窗口面积」/「忽略复位的窗口面积」都不再叠加，
+    ///   否则「不勾选 = 功能生效」会被按尺寸的一刀切悄悄覆盖。
     ///   未列入列表的 App 由调用方继续走面积规则。
     static func ignoredApp(for bundleID: String) -> IgnoredApp? {
         guard !bundleID.isEmpty else { return nil }
