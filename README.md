@@ -6,16 +6,17 @@
 
 ## 宣传片
 
-- 30 秒竖屏版（抖音 / 小红书）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
-  - 1080×1920 / 30fps / H.264 + AAC，**中文温柔女声配音**（Edge TTS 晓晓 / Warm，9 段合计 26.98 秒），人声段自动压低音效。
-  - **v2 分镜（四组 / 9 镜）**：① 手动拉伸繁琐 → 想要 iPad 式自动居中；② 产品出场 / 新窗口自动居中 / 菜单栏切换宽窄 / 每 App 各记各的模式；③ 侧拉正常分屏不打扰 → 往中间靠吸回中心；④ Slogan + Gitee / GitHub 地址卡。
-  - 片尾列出 `gitee.com/MirrorPro/window-resetter` 与 `github.com/MirrorProMax/window-resetter`。**2026-11-08 13:45 复核：GitHub 已发布 `v1.1.0` Release（dmg / zip / SHA256SUMS，可下载）；Gitee Releases 仍为空，只有源码。** 成片文案「源码与构建方式见仓库」为发布前的旧口径，待重渲染时改为「GitHub Releases 下载」。
-  - 字幕按「一句旁白 = 一屏字幕」切换，切换点对齐镜头起点；时间轴按 9 段配音实测时长校准。
-  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；**不含多显示器 / 跨屏**相关表述。
-- 分镜脚本 v2（含成片校准时间轴、完整稿与精简稿旁白、口径禁区）：[docs/宣传短视频分镜脚本-v2.md](docs/宣传短视频分镜脚本-v2.md)
+- 30 秒竖屏版（抖音 / B站 / 小红书 / 视频号通用）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
+  - 1080×1920 / 30fps / H.264 + AAC，**中文温柔女声配音**（Edge TTS 晓晓 / Warm，8 段合计 22.97 秒），人声段自动压低音效。
+  - **v3 分镜（四组 / 8 镜，合规净版）**：① 0.8 秒视觉钩子「歪斜 → 自己居中」→ 平板式自动居中（产品名提前到约 4.7 秒）；② 产品出场 / 新窗口自动居中 / 菜单栏切宽窄 + 记忆角标；③ 侧拉分屏不打扰 → 往中间靠吸回中心；④ Slogan + 品牌净版定格。
+  - **全平台合规净版**：画面与旁白均不含 URL、二维码、平台名（GitHub / Gitee / Releases）及「简介 / 评论区 / 扫码 / 下载」等导流话术；下载地址与仓库链接全部外置到发布文案（见分镜脚本 v3 第四节），下载方式见本文件「下载安装」。
+  - 字幕按「一句旁白 = 一屏字幕」切换，切换点对齐镜头起点；时间轴按 8 段配音实测时长校准，节奏为「首镜 2.25 秒快切 → 中段静止 → 片尾定格」。
+  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+、需「辅助功能」权限、未签名需右键打开；**不含多显示器 / 跨屏、iPad 商标类比**相关表述。
+- 分镜脚本 v3（成片校准时间轴、8 段旁白稿、改动对照、发布文案、口径禁区）：[docs/宣传短视频分镜脚本-v3.md](docs/宣传短视频分镜脚本-v3.md)
+- 分镜脚本 v2（历史版本，含 9 镜时间轴与「待修订项」）：[docs/宣传短视频分镜脚本-v2.md](docs/宣传短视频分镜脚本-v2.md)
 - 早期脚本（75 秒主版分镜 + 30 秒竖屏剪辑清单）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
-- 旁白音频缓存：[tools/voiceover_v2/](tools/voiceover_v2/)（9 段 mp3，离线重渲染无需联网）
-- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video_v2.py](tools/render_douyin_video_v2.py) 重新渲染（需 ffmpeg、Pillow；缓存齐全时完全离线，缺缓存才需 edge-tts 联网，最差回退 macOS `say`）。[tools/render_douyin_video.py](tools/render_douyin_video.py) 为 v1.3 旧渲染器，保留可回退。
+- 旁白音频缓存：[tools/voiceover_v3/](tools/voiceover_v3/)（8 段 mp3，离线重渲染无需联网）
+- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video_v3.py](tools/render_douyin_video_v3.py) 重新渲染（需 ffmpeg、Pillow；缓存齐全时完全离线，缺缓存才需 edge-tts 联网，最差回退 macOS `say`）。`tools/render_douyin_video_v2.py` 与 `tools/render_douyin_video.py` 为旧渲染器，保留可回退。
 
 ## 功能
 
