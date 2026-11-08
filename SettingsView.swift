@@ -162,6 +162,34 @@ struct SettingsView: View {
         ignoredStore.remove(id)
     }
 
+    /// 「标签 + 靠右数字输入框 + 单位」的统一行。
+    /// - Note: macOS Form 会把 `Toggle` / `Picker` 自动推到行右端，但自定义 `HStack` 若不显式
+    ///   放 `Spacer`，输入框就会紧贴左侧标签停在中段，右侧留一大片空白，与同组控件不对齐。
+    ///   这里用 `Spacer` 把「输入框 + 单位」整体推到行右端，单位紧跟输入框，
+    ///   因此各行右边缘一致；同分组单位相同，输入框右边缘也彼此对齐。
+    ///   输入框内数字右对齐，靠近单位，长短数值（8 / 240000）看着更整齐。
+    private func numberRow(
+        _ title: String,
+        value: Binding<Int>,
+        formatter: NumberFormatter,
+        unit: String,
+        help: String,
+        fieldWidth: CGFloat = 100
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .help(help)
+            Spacer(minLength: 12)
+            TextField("", value: value, formatter: formatter)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: fieldWidth)
+                .multilineTextAlignment(.trailing)
+                .help(help)
+            Text(unit)
+                .help(help)
+        }
+    }
+
     /// 也允许添加当前没运行的 App：从磁盘选 .app，读它的 Bundle ID 与显示名。
     private func addFromFile() {
         NSApp.activate(ignoringOtherApps: true)
@@ -206,25 +234,11 @@ struct SettingsView: View {
             }
 
             Section {
-                HStack {
-                    Text("忽略自适应居中的窗口面积")
-                    TextField("", value: $ignoreAdaptiveCenterArea, formatter: areaFormatter)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
-                        .help(adaptiveCenterAreaHelp)
-                    Text("逻辑分辨率²")
-                        .help(adaptiveCenterAreaHelp)
-                }
+                numberRow("忽略自适应居中的窗口面积", value: $ignoreAdaptiveCenterArea,
+                          formatter: areaFormatter, unit: "逻辑分辨率²", help: adaptiveCenterAreaHelp)
 
-                HStack {
-                    Text("忽略复位的窗口面积")
-                    TextField("", value: $ignoreResetArea, formatter: areaFormatter)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
-                        .help(resetAreaHelp)
-                    Text("逻辑分辨率²")
-                        .help(resetAreaHelp)
-                }
+                numberRow("忽略复位的窗口面积", value: $ignoreResetArea,
+                          formatter: areaFormatter, unit: "逻辑分辨率²", help: resetAreaHelp)
             } header: {
                 Text("窗口面积")
             } footer: {
@@ -305,15 +319,8 @@ struct SettingsView: View {
                 .help("首次激活 / 跨屏自动居中（跨屏等松开鼠标后才生效，拖动中不打断）；居中时拉伸锁定中心；拖进 / 拖出中心磁吸范围各震动一下（范围由下方「吸附率」设定），进入后松手吸附到中心。\n双击窗口上 / 下边缘把一端顶到头后，自动把另一端也拉到对侧边缘（垂直铺满可见区）。\n固定在某一侧的窗口不再自动居中，拖回中心或磁吸后恢复。\n控制中心、通知中心、菜单栏菜单、系统搜索等临时浮层，以及未列入「忽略的 App」列表、且面积不超过「忽略自适应居中的窗口面积」的小窗口不参与；在列表里勾了「自适应居中」的 App 也不参与。")
 
                 if adaptiveCenter {
-                    HStack {
-                        Text("吸附率")
-                        TextField("", value: $snapRatioPercent, formatter: ratioFormatter)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                            .help(snapRatioHelp)
-                        Text("%")
-                            .help(snapRatioHelp)
-                    }
+                    numberRow("吸附率", value: $snapRatioPercent, formatter: ratioFormatter,
+                              unit: "%", help: snapRatioHelp, fieldWidth: 60)
 
                     Picker("震动强度", selection: $hapticStrengthRaw) {
                         Text("轻").tag(0)
@@ -338,15 +345,8 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .help("决定窄模式宽度。两种选项的高度都铺满可见区，上下顶到菜单栏下沿与 Dock 上沿。")
 
-                HStack {
-                    Text("最小宽度")
-                    TextField("", value: $minimumWidth, formatter: pixelFormatter)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
-                        .help(minimumWidthHelp)
-                    Text("逻辑分辨率")
-                        .help(minimumWidthHelp)
-                }
+                numberRow("最小宽度", value: $minimumWidth, formatter: pixelFormatter,
+                          unit: "逻辑分辨率", help: minimumWidthHelp)
             } header: {
                 Text("窗口布局")
             }
@@ -355,15 +355,8 @@ struct SettingsView: View {
                 Toggle("台前调度检测", isOn: $stageManagerDetect)
                     .help("开启：系统台前调度开启时左右预留，系统台前调度关闭时不预留。\n关闭：一律不预留，宽模式占满可用宽度。\n竖屏自适应生效时本选项不生效；预留值可能被「最小宽度」压缩。")
 
-                HStack {
-                    Text("左右预留")
-                    TextField("", value: $margin, formatter: pixelFormatter)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
-                        .help(marginHelp)
-                    Text("逻辑分辨率")
-                        .help(marginHelp)
-                }
+                numberRow("左右预留", value: $margin, formatter: pixelFormatter,
+                          unit: "逻辑分辨率", help: marginHelp)
             } header: {
                 Text("台前调度")
             }
@@ -373,15 +366,8 @@ struct SettingsView: View {
                     .help("窗口移动与拉伸在设定时长内平滑完成；只改变到达方式，不影响布局规则。")
 
                 if smoothAnimation {
-                    HStack {
-                        Text("动画时长")
-                        TextField("", value: $animationDurationMs, formatter: msFormatter)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
-                            .help("单位毫秒，默认 1000，有效范围 16~60000。")
-                        Text("毫秒")
-                            .help("单位毫秒，默认 1000，有效范围 16~60000。")
-                    }
+                    numberRow("动画时长", value: $animationDurationMs, formatter: msFormatter,
+                              unit: "毫秒", help: "单位毫秒，默认 1000，有效范围 16~60000。")
                 }
             } header: {
                 Text("窗口动画")
