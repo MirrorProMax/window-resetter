@@ -7,8 +7,10 @@
 ## 宣传片
 
 - 30 秒竖屏版（抖音 / 小红书）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
-- 拍摄脚本（含 75 秒主版分镜与 30 秒竖屏剪辑清单）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
-- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video.py](tools/render_douyin_video.py) 重新渲染（需 ffmpeg 与 Pillow）。
+  - 1080×1920 / 30fps / H.264 + AAC，**含中文配音**（macOS 自带 TTS 语音 Tingting，7 段共约 25.5 秒），人声段自动压低音效。
+  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；开场主打**自适应居中**。
+- 拍摄脚本（含 75 秒主版分镜、30 秒竖屏剪辑清单与配音版旁白稿）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
+- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video.py](tools/render_douyin_video.py) 重新渲染（需 ffmpeg、Pillow 与 macOS 中文语音 Tingting；改文案后重跑即可）。
 
 ## 功能
 
