@@ -7,10 +7,12 @@
 ## 宣传片
 
 - 30 秒竖屏版（抖音 / 小红书）：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)
-  - 1080×1920 / 30fps / H.264 + AAC，**含中文配音**（macOS 自带 TTS 语音 Tingting，7 段共约 25.5 秒），人声段自动压低音效。
-  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；开场主打**自适应居中**。
+  - 1080×1920 / 30fps / H.264 + AAC，**中文温柔女声配音**（Edge TTS 晓晓 / Warm，7 段约 26 秒），人声段自动压低音效。
+  - 叙事主线：**窗口自动居中**是主角（前 13 秒）；菜单栏点击复位与宽窄切换归为「可选操作」（13–19.4 秒，画面右上角有标签）。
+  - 全片常驻「macOS 专属」角标，片尾注明 macOS 13.0+ 与「辅助功能」权限；按口径要求**不含多显示器 / 跨屏**相关表述。
+- 旁白音频缓存：[tools/voiceover/](tools/voiceover/)（7 段 mp3，离线重渲染无需联网）
 - 拍摄脚本（含 75 秒主版分镜、30 秒竖屏剪辑清单与配音版旁白稿）：[docs/宣传短视频拍摄脚本.md](docs/宣传短视频拍摄脚本.md)
-- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video.py](tools/render_douyin_video.py) 重新渲染（需 ffmpeg、Pillow 与 macOS 中文语音 Tingting；改文案后重跑即可）。
+- 成片为按本工具真实功能绘制的仿录屏动效，可用 [tools/render_douyin_video.py](tools/render_douyin_video.py) 重新渲染（需 ffmpeg、Pillow；缓存齐全时完全离线，缺缓存才需 edge-tts 联网，最差回退 macOS `say`）。
 
 ## 功能
 

@@ -3,7 +3,10 @@
 """窗口复位器 · 抖音 30 秒竖屏宣传片逐帧渲染器（1080x1920 / 30fps）。
 
 画面为按项目真实功能绘制的「仿录屏」动效，非真实屏幕录制。
-中文配音使用 macOS 自带 TTS（Tingting）逐段合成后混入音轨。
+叙事主线：窗口自动居中（主角） > 点击复位与宽窄切换（可选操作） > 隐私与开源。
+全片不出现多显示器 / 跨屏相关表述。
+中文配音为温柔女声（Edge TTS zh-CN-XiaoxiaoNeural，官方标签 Warm），
+音频缓存在脚本同目录 voiceover/，离线也能重渲染。
 用法：python3 render_douyin_video.py --output <path.mp4>
 """
 import argparse
@@ -12,6 +15,7 @@ import os
 import random
 import struct
 import subprocess
+import sys
 import tempfile
 import wave
 from PIL import Image, ImageDraw, ImageFont
@@ -23,7 +27,8 @@ SR = 44100
 # ---------- 时间轴与配音 ----------
 # 各场景起点（秒）。场景函数内部一律使用「相对本场景起点」的局部时间，
 # 需要全局时间（进度条等）时用 G() 换算，方便随配音调整分镜长度。
-SCENE_START = [0.0, 5.2, 8.4, 12.0, 15.8, 20.4, 25.0]
+# 0–13s 讲窗口自动居中；13–19.4s 点击复位（可选操作）；19.4s 后信任卡与片尾。
+SCENE_START = [0.0, 4.8, 9.4, 13.0, 14.6, 17.0, 19.4, 23.8]
 CUR_START = 0.0
 
 
@@ -32,15 +37,20 @@ def G(local_t):
     return local_t + CUR_START
 
 
-# 中文旁白：(起点秒, 语速, 文案)。实测总时长约 25.5s，段间留呼吸。
+# 温柔女声：Edge TTS 晓晓（Warm），语速 +10%；缓存缺失时才联网合成。
+VOICE_NAME = "zh-CN-XiaoxiaoNeural"
+VOICE_RATE = "+10%"
+FALLBACK_VOICE = "Tingting"     # 无缓存且离线时的兜底
+FALLBACK_RATE = 200
+# 旁白：(起点秒, 文案)。7 段合计约 26s，段间留呼吸。
 VOICEOVER = [
-    (0.20, 250, "macOS 窗口总跑偏？自适应居中，新窗口自动落在正中间。"),
-    (5.35, 240, "菜单栏左键点一下，窗口立刻摆正。"),
-    (8.55, 235, "按窗口所在的屏幕计算，多显示器也一样。"),
-    (12.15, 240, "再点一下切换宽窄，每个应用各记各的模式。"),
-    (15.95, 235, "靠边放就不打扰，拖回中心自动吸住。"),
-    (20.55, 235, "不联网，不收集数据，代码完全开源。"),
-    (25.20, 235, "窗口复位器，macOS 菜单栏小工具，点一下，就正了。"),
+    (0.25, "窗口不用你摆，窗口复位器，让它自动居中。"),
+    (4.95, "拖歪了，松手就吸回来；靠边放，就不打扰。"),
+    (9.55, "磁吸范围自己调，新窗口自动落位。"),
+    (13.15, "想更规整？菜单栏顺手点一下。"),
+    (16.95, "再点一下，切换宽窄。"),
+    (19.55, "不联网，不收集数据，代码开源。"),
+    (23.95, "窗口复位器，macOS 小工具，让窗口自己回中间。"),
 ]
 
 # ---------- 配色 ----------
@@ -276,15 +286,20 @@ def draw_icon(img, cx, cy, size, bg=ACCENT, glyph=WHITE):
            fill=glyph, width=max(4, int(size * 0.045)))
 
 
-def chrome(img, t, scene_idx, scene_name, caption_lines, note, kicker=True, fade_t=None):
+def chrome(img, t, scene_idx, scene_name, caption_lines, note, kicker=True, fade_t=None,
+           tag=None):
     """统一的字幕、页眉与进度条。t 必须是全局时间 G(local_t)；
-    fade_t 用镜头内局部时间，进度条始终按全局 t 单调递增。"""
+    fade_t 用镜头内局部时间，进度条始终按全局 t 单调递增。
+    tag 用于把「可选操作」类镜头与主角功能区分开。"""
     # 平台标注常驻，避免观众误以为是 Windows 工具
     rrect(img, (70, 84, 330, 146), (43, 92, 156), radius=31)
     txt(img, (200, 115), "macOS 专属", 29, WHITE, bold=True, shadow=False)
+    if tag:
+        rrect(img, (650, 84, 1000, 146), (34, 54, 82), radius=31)
+        txt(img, (825, 115), tag, 26, ACCENT2, bold=True, shadow=False)
     if kicker:
         txt(img, (90, 208), "窗口复位器 · 菜单栏小工具", 29, MUTED, anchor="lm", shadow=False)
-        txt(img, (990, 208), f"{scene_idx:02d} / 07  {scene_name}", 28, MUTED,
+        txt(img, (990, 208), f"{scene_idx:02d} / {len(SCENES):02d}  {scene_name}", 28, MUTED,
             anchor="rm", shadow=False)
     ft = t if fade_t is None else fade_t
     fade = int(255 * seg(ft, 0.0, 0.25))
@@ -318,15 +333,15 @@ MESSY_TITLES = ["浏览器", "编辑器", "终端", "备忘录"]
 
 
 def scene_auto(img, t):
-    """开场主打：自适应居中（默认开启）。
-    新窗口自动落位 → 手动拖歪 → 松手自动吸回中心。"""
+    """开场主角：窗口自动居中（默认开启）。
+    新窗口自动落位 → 手动拖开 → 松手自己回中间。"""
     draw_desktop(img)
     dashed_box(img, (300, 400, 780, 1300), color=ACCENT2,
                alpha=int(110 + 75 * seg(t, 0.2, 0.9)))
     if t < 1.9:
         u = ease_out(seg(t, 0.30, 1.55))
         box = lerp_rect(OFFCENTER, NARROW, u)
-        hint_pill(img, "新窗口自动落位 · 自适应居中默认开启", ACCENT2,
+        hint_pill(img, "新窗口自动落位 · 不用点，自己居中", ACCENT2,
                   int(255 * seg(t, 1.05, 1.45)))
     elif t < 3.35:
         u = ease_inout(seg(t, 2.05, 3.05))
@@ -340,25 +355,25 @@ def scene_auto(img, t):
             q = seg(t, 3.9, 4.55)
             ring(img, 540, 850, int(lerp(60, 320, ease_out(q))), color=WHITE, width=7,
                  alpha=int(210 * (1 - q)))
-        hint_pill(img, "松手自动吸回中心 · 磁吸范围 8%（可调 1~20）", ACCENT2,
+        hint_pill(img, "松手自己回中间 · 磁吸范围 8%（可调 1~20）", ACCENT2,
                   int(255 * seg(t, 3.45, 3.85)))
     draw_window(img, box, "浏览器", narrow=True, active=True)
     # 开场卖点徽标（面板上方，避开桌面区）
     badge_a = int(255 * seg(t, 0.05, 0.45))
     rrect(img, (270, 248, 810, 318), (43, 92, 156), radius=35, alpha=badge_a)
-    txt(img, (540, 283), "自适应居中 · 默认开启", 32, WHITE, bold=True,
+    txt(img, (540, 283), "窗口自动居中 · 默认开启", 32, WHITE, bold=True,
         shadow=False, alpha=badge_a)
     if t < 2.0:
-        caps = ["新窗口，自动居中", "默认开启 · 无需设置"]
+        caps = ["窗口，自己会居中", "默认开启 · 无需点击"]
         ft = t
     elif t < 3.35:
         caps = ["手动拖开，也没关系", "想放哪，就放哪"]
         ft = t - 2.0
     else:
-        caps = ["拖回中心，自动吸住", "松手就归位 · 磁吸范围可调"]
+        caps = ["松手，自己回中间", "拖回中心自动吸住"]
         ft = t - 3.35
-    chrome(img, G(t), 1, "自适应居中", caps,
-           "macOS 菜单栏小工具 · 按窗口所在屏幕计算", fade_t=ft)
+    chrome(img, G(t), 1, "自动居中", caps,
+           "macOS 菜单栏小工具 · 常驻后台，默认开启", fade_t=ft)
 
 
 def scene_click(img, t):
@@ -378,7 +393,8 @@ def scene_click(img, t):
              alpha=int(230 * (1 - u)))
     draw_cursor(img, cx + 40, cy + 46)
     txt(img, (540, 1090), "macOS 菜单栏图标 · 左键", 34, MUTED, shadow=False)
-    chrome(img, G(t), 2, "一键", ["菜单栏左键，点一下"], "不用记快捷键，也不用拖来拖去")
+    chrome(img, G(t), 4, "顺手一按", ["想更规整？顺手点一下"],
+           "可选操作 · 自动居中才是主角", tag="可选操作")
 
 
 def scene_snap(img, t):
@@ -394,8 +410,9 @@ def scene_snap(img, t):
         a = int(255 * seg(t, 1.20, 1.55))
         d = ImageDraw.Draw(img)
         d.line((540, DESK_TOP, 540, DESK_BOT), fill=(46, 74, 116), width=2)
-        hint_pill(img, "已摆正 · 按窗口所在屏幕计算", ACCENT2, a)
-    chrome(img, G(t), 3, "复位", ["点一下，摆正"], "上下铺满可见区 · 水平居中 · 多显示器各自计算")
+        hint_pill(img, "已摆正 · 顺手规整", ACCENT2, a)
+    chrome(img, G(t), 5, "一键摆正", ["点一下，摆正"], "上下铺满可见区 · 水平居中",
+           tag="可选操作")
 
 
 def scene_mode(img, t):
@@ -414,7 +431,8 @@ def scene_mode(img, t):
         x0 = 120 + i * 300
         rrect(img, (x0, 1392, x0 + 270, 1442), (30, 48, 76), radius=22, alpha=a)
         txt(img, (x0 + 135, 1417), s, 26, c, bold=True, shadow=False, alpha=a)
-    chrome(img, G(t), 4, "切换", ["再点一下，宽窄切换"], "每个 App，各记各的模式")
+    chrome(img, G(t), 6, "宽窄切换", ["再点一下，宽窄切换"], "每个 App，各记各的模式",
+           tag="可选操作")
 
 
 def scene_adaptive(img, t):
@@ -427,7 +445,7 @@ def scene_adaptive(img, t):
             a = int(255 * seg(t, 1.2, 1.6))
             rrect(img, (620, 430, 950, 500), (40, 60, 88), radius=20, alpha=a)
             txt(img, (785, 465), "已固定 · 不打扰", 26, ACCENT2, bold=True, shadow=False, alpha=a)
-        chrome(img, G(t), 5, "自适应", ["靠边固定，不打扰"], "手动放到哪，就留在哪 · 自适应居中默认开启",
+        chrome(img, G(t), 2, "靠边不打扰", ["靠边放，就不打扰"], "手动放到哪，就留在哪 · 自动居中默认开启",
                fade_t=t)
     else:
         u = ease_inout(seg(t, 2.25, 3.45))
@@ -441,8 +459,38 @@ def scene_adaptive(img, t):
             q = seg(t, 3.3, 3.95)
             ring(img, 540, 850, int(lerp(50, 330, ease_out(q))), color=WHITE, width=7,
                  alpha=int(210 * (1 - q)))
-        chrome(img, G(t), 5, "自适应", ["拖回中心，自动吸住"], "松开鼠标后吸附到中心 · 跨屏也是松手才居中",
+        chrome(img, G(t), 2, "自动吸回", ["松手，自己回中间"], "松开鼠标后吸附到中心 · 磁吸范围 8% 可调",
                fade_t=t - 2.0)
+
+
+DETAIL_CARDS = [
+    ("01", "新窗口自动落位", "打开就居中，不用手动摆"),
+    ("02", "中心磁吸 8% 可调", "拖回中心自动吸住，范围 1~20%"),
+    ("03", "拉伸也锁住中心", "改窗口大小，中心不跑"),
+]
+
+
+def scene_details(img, t):
+    """自动居中的三个细节。按口径要求，不出现多显示器 / 跨屏内容。"""
+    draw_desktop(img, 0.55)
+    for i, (num, title, desc) in enumerate(DETAIL_CARDS):
+        appear = 0.15 + i * 0.55
+        u = ease_out(seg(t, appear, appear + 0.35))
+        if u <= 0:
+            continue
+        y = 470 + i * 270
+        col = ACCENT if i != 1 else ACCENT2
+        shifted = (120, y + (1 - u) * 45, 960, y + 230 + (1 - u) * 45)
+        rrect(img, shifted, (30, 47, 74), radius=24, alpha=int(245 * u), outline=col, width=2)
+        txt(img, (215, y + 115), num, 62, col, bold=True, shadow=False, alpha=int(255 * u))
+        txt(img, (340, y + 82), title, 38, WHITE, bold=True, shadow=False,
+            anchor="lm", alpha=int(255 * u))
+        txt(img, (340, y + 158), desc, 26, MUTED, shadow=False,
+            anchor="lm", alpha=int(255 * u))
+    hint_pill(img, "常驻后台 · 默认开启 · 不用点", ACCENT2,
+              int(255 * seg(t, 1.7, 2.1)))
+    chrome(img, G(t), 3, "一直都在", ["自动居中，一直在", "不用点，自己回中间"],
+           "macOS 菜单栏小工具 · 常驻服务，独立于点击复位")
 
 
 TRUST = [
@@ -496,7 +544,7 @@ def scene_trust(img, t):
         txt(img, (b[0] + 200, b[1] + 218), title, 38, WHITE, bold=True, shadow=False,
             alpha=int(255 * u))
         txt(img, (b[0] + 200, b[1] + 278), desc, 26, MUTED, shadow=False, alpha=int(255 * u))
-    chrome(img, G(t), 6, "信任", ["不联网 · 不收集数据", "纯 Swift 无依赖 · MIT 开源"],
+    chrome(img, G(t), 7, "信任", ["不联网 · 不收集数据", "纯 Swift 无依赖 · MIT 开源"],
            "PRIVACY.md 与仓库源码均可自行核对")
 
 
@@ -508,15 +556,18 @@ def scene_end(img, t):
         ring(img, 540, 700, int(lerp(140, 340, ease_out(q))), color=ACCENT, width=6,
              alpha=int(160 * (1 - q)))
     a = int(255 * seg(t, 0.4, 1.0))
-    txt(img, (540, 990), "窗口复位器", 92, WHITE, bold=True, alpha=a)
-    txt(img, (540, 1100), "点一下，就正了", 58, ACCENT2, bold=True,
+    txt(img, (540, 960), "窗口复位器", 86, WHITE, bold=True, alpha=a)
+    # 主 Slogan：自动居中；点击复位降为次要小字
+    txt(img, (540, 1075), "窗口，自己会回中间", 54, ACCENT2, bold=True,
         alpha=int(255 * seg(t, 0.7, 1.3)))
+    txt(img, (540, 1160), "点一下，就正了（可选）", 30, MUTED, shadow=False,
+        alpha=int(255 * seg(t, 0.9, 1.5)))
     b = int(255 * seg(t, 1.2, 1.8))
-    rrect(img, (270, 1210, 810, 1300), (43, 92, 156), radius=44, alpha=b)
-    txt(img, (540, 1255), "下载与源码见简介", 38, WHITE, bold=True, shadow=False, alpha=b)
-    txt(img, (540, 1390), "仅支持 macOS 13.0 及以上 · 需辅助功能权限", 28, MUTED,
+    rrect(img, (270, 1230, 810, 1320), (43, 92, 156), radius=44, alpha=b)
+    txt(img, (540, 1275), "下载与源码见简介", 38, WHITE, bold=True, shadow=False, alpha=b)
+    txt(img, (540, 1400), "仅支持 macOS 13.0 及以上 · 需辅助功能权限", 28, MUTED,
         shadow=False, alpha=b)
-    txt(img, (540, 1450), "Gitee / GitHub：window-resetter", 26, MUTED,
+    txt(img, (540, 1460), "Gitee / GitHub：window-resetter", 26, MUTED,
         shadow=False, alpha=b)
     b2 = int(255 * seg(t, 0.1, 0.5))
     rrect(img, (70, 84, 330, 146), (43, 92, 156), radius=31, alpha=b2)
@@ -528,13 +579,14 @@ def scene_end(img, t):
 
 
 SCENES = [
-    (SCENE_START[0], SCENE_START[1], scene_auto),       # 自适应居中（开场主打）
-    (SCENE_START[1], SCENE_START[2], scene_click),      # 菜单栏一键
-    (SCENE_START[2], SCENE_START[3], scene_snap),       # 摆正
-    (SCENE_START[3], SCENE_START[4], scene_mode),       # 宽窄切换
-    (SCENE_START[4], SCENE_START[5], scene_adaptive),   # 靠边 / 磁吸
-    (SCENE_START[5], SCENE_START[6], scene_trust),      # 信任卡
-    (SCENE_START[6], 30.0, scene_end),                  # 片尾
+    (SCENE_START[0], SCENE_START[1], scene_auto),       # 窗口自动居中（开场主角）
+    (SCENE_START[1], SCENE_START[2], scene_adaptive),   # 靠边不打扰 / 松手吸回
+    (SCENE_START[2], SCENE_START[3], scene_details),    # 自动居中三细节
+    (SCENE_START[3], SCENE_START[4], scene_click),      # 可选：菜单栏顺手一点
+    (SCENE_START[4], SCENE_START[5], scene_snap),       # 可选：一键摆正
+    (SCENE_START[5], SCENE_START[6], scene_mode),       # 可选：宽窄切换
+    (SCENE_START[6], SCENE_START[7], scene_trust),      # 信任卡
+    (SCENE_START[7], 30.0, scene_end),                  # 片尾
 ]
 
 
@@ -554,14 +606,29 @@ def render(t):
 
 # ---------- 中文配音 ----------
 def load_voiceover_clips(tmpdir):
-    """用 macOS 自带 say / Tingting 逐段合成旁白，统一为 44.1k 单声道浮点采样。"""
+    """温柔女声旁白：优先读脚本同目录 voiceover/ 的音频缓存，
+    缺失时用 Edge TTS 合成并写回缓存；离线且无缓存时回退 macOS say。"""
+    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voiceover")
+    os.makedirs(cache, exist_ok=True)
     clips = []
-    for i, (start, rate, text) in enumerate(VOICEOVER):
-        aiff = os.path.join(tmpdir, f"vo{i:02d}.aiff")
+    for i, (start, text) in enumerate(VOICEOVER):
+        src = os.path.join(cache, f"vo{i:02d}.mp3")
+        if not os.path.exists(src):
+            try:
+                subprocess.run([sys.executable, "-m", "edge_tts",
+                                "--voice", VOICE_NAME, "--rate", VOICE_RATE,
+                                "--text", text, "--write-media", src],
+                               check=True, capture_output=True, timeout=60)
+                print(f"  配音 {i + 1} 缓存缺失，已联网合成", flush=True)
+            except Exception:
+                if os.path.exists(src):
+                    os.remove(src)
+                src = os.path.join(tmpdir, f"fallback{i:02d}.aiff")
+                subprocess.run(["say", "-v", FALLBACK_VOICE, "-r", str(FALLBACK_RATE),
+                                "-o", src, text], check=True)
+                print(f"  配音 {i + 1} 使用离线兜底语音 {FALLBACK_VOICE}", flush=True)
         wavp = os.path.join(tmpdir, f"vo{i:02d}.wav")
-        subprocess.run(["say", "-v", "Tingting", "-r", str(rate), "-o", aiff, text],
-                       check=True)
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", aiff,
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src,
                         "-ar", str(SR), "-ac", "1", "-c:a", "pcm_s16le", wavp],
                        check=True)
         with wave.open(wavp, "rb") as w:
@@ -608,21 +675,21 @@ def make_audio(path, clips=()):
     # 轻量节拍（0.75 秒一拍），片尾留白给人声
     k = 0
     t0 = 0.0
-    while t0 < 25.0:
+    while t0 < 23.8:
         kick(t0, 0.11 if k % 4 == 0 else 0.07)
         hat(t0 + 0.375)
         t0 += 0.75
         k += 1
     # 关键音效按新时间轴
-    for x in [1.55, 4.35, 5.95, 8.55, 12.35, 15.95, 19.35]:
+    for x in [1.55, 4.35, 6.20, 8.60, 9.60, 13.40, 14.80, 17.20, 18.20]:
         click(x)
     for x in SCENE_START[1:]:
         whoosh(x)
-    for x in [20.6, 21.6, 22.6, 23.6]:
+    for x in [19.6, 20.6, 21.6, 22.6]:
         ding(x)
-    ding(25.4, 0.16)
+    ding(24.2, 0.16)
     # 音效尾段淡出（配音随后混入，不受影响）
-    fade_start = int(25.0 * sr)
+    fade_start = int(23.8 * sr)
     for i in range(fade_start, n):
         buf[i] *= max(0.0, 1 - (i - fade_start) / (2.0 * sr))
 
@@ -681,7 +748,7 @@ def main():
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
         "-shortest", "-movflags", "+faststart",
-        "-metadata", "title=窗口复位器 · 30 秒宣传片",
+        "-metadata", "title=窗口复位器 · 30 秒宣传片（窗口自动居中 · 温柔女声）",
         args.output,
     ]
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
