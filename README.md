@@ -4,11 +4,6 @@
 
 纯 Swift + AppKit / SwiftUI，无第三方依赖，不联网、不收集数据。
 
-## 宣传片
-
-- 30 秒竖屏版：[assets/窗口复位器-抖音30秒宣传片.mp4](assets/窗口复位器-抖音30秒宣传片.mp4)。分镜脚本、旁白稿与发布文案见 [docs/宣传短视频分镜脚本-v3.md](docs/宣传短视频分镜脚本-v3.md)（历史稿：[v2](docs/宣传短视频分镜脚本-v2.md)、[早期脚本](docs/宣传短视频拍摄脚本.md)）。
-- 各平台封面：[assets/bilibili/](assets/bilibili/) · [assets/xiaohongshu/](assets/xiaohongshu/) · [assets/douyin/](assets/douyin/)；渲染脚本与旁白缓存见 [tools/](tools/)，重渲染说明见脚本文档第六节。
-
 ## 功能
 
 **复位 / 切换**
