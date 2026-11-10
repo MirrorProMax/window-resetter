@@ -40,17 +40,24 @@ import Dispatch
 ///    退出调度中心回到原窗口时不会被误判为「首次激活」而居中。
 ///    判定统一走 `WindowManager.isIgnoredByArea(_:for:)`，按功能取各自的阈值：
 ///    自适应居中用「忽略自适应居中的窗口面积」，手动复位用「忽略复位的窗口面积」；0 = 不启用。
-/// 9. **系统垂直动画会话内一律不写窗口几何**：双击上 / 下边缘后由系统自己跑的
-///    「把一端顶到边」动画，特征是「光标已松开 + 高度逐轮变化」。这段会话内**整个轮询不写
-///    AXPosition / AXSize**，而不是只跳过某个分支的 y —— 磁吸吸附、贴边补齐、激活/跨屏居中
-///    都会写完整两轴位置，任意一个都能把动画拽住。
-///    会话用「最近一次变化时刻 + 安静期」延续，覆盖动画缓动接近终点时高度差 <1px 的帧；
+/// 9. **系统边缘动画会话内一律不写窗口几何**：双击上 / 下边缘（改高度）或左 / 右边缘
+///    （改宽度）后由系统自己跑的「把一端顶到边」动画，特征是「光标已松开 + 尺寸逐轮变化」。
+///    这段会话内**整个轮询不写 AXPosition / AXSize**，而不是只跳过某个分支的 y ——
+///    磁吸吸附、贴边补齐、激活/跨屏居中都会写完整两轴位置，任意一个都能把动画拽住；
+///    横向动画还会被分支 3 每轮一次的水平居中补偿（写 x）反复拉回中心，表现为拉伸卡顿。
+///    会话用「最近一次变化时刻 + 安静期」延续，覆盖动画缓动接近终点时尺寸差 <1px 的帧；
 ///    用户按住鼠标拉伸时 `isPointerHeld` 为真，不进门禁，中心锁定照常工作。
 ///    会话结束后帧稳定若干轮，再由第 7 项补齐另一端。
+/// 10. **首次激活时按记忆模式摆正**：重新打开的窗口（尤其在台前调度下被 macOS 挤偏 /
+///     缩进）若尺寸与该 App 记忆的宽 / 窄模式目标布局不符，先拉伸到目标尺寸再居中
+///     （「复位 + 居中」都完成），而不是只做平移居中 —— 只平移会保留左右缝隙，
+///     缝隙之和恰好等于居中前挤偏的空间。仅对真正新出现的窗口、且垂直方向已铺满
+///     可见区的窗口生效，避免拉伸对话框 / 小窗口；「忽略的 App」中勾了「复位」的
+///     条目完全不参与尺寸摆正。
 ///
 /// 技术边界：Accessibility API 不能拦截系统拖动 / 拉伸，只能观察结果后补偿，
 /// 所以「锁定居中式拉伸」是事后把位置写回去，会有一个轮询间隔内的短暂位移。
-/// 除第 7 项的贴边补齐（需要写 `AXSize`）外，本服务一律只写 `AXPosition`。
+/// 除第 7 项的贴边补齐与第 10 项的首次摆正（需要写 `AXSize`）外，本服务一律只写 `AXPosition`。
 final class AdaptiveCenterManager {
     static let shared = AdaptiveCenterManager()
 
@@ -64,12 +71,15 @@ final class AdaptiveCenterManager {
     private let manualMoveTolerance: CGFloat = 12
     /// 垂直（上下）补偿相对水平（左右）的降频倍数：6 ⇒ 每 6 轮（6 × 60ms ≈ 360ms）才写一次 y。
     /// 这只作用于按住鼠标手动拉伸窗口的场景，
-    /// 系统自己的边缘动画由下面的「垂直动画安静期」整段禁止写入。
+    /// 系统自己的边缘动画由下面的「边缘动画安静期」整段禁止写入。
     private let verticalCompensationDivisor = 6
-    /// 「系统垂直动画会话」的安静期（秒）：最近一次「松手且高度在变」之后的这段时间内，
-    /// 整轮不写任何窗口几何。0.35s 覆盖动画缓动收尾（高度差 <1px 的帧不再误判为动画结束），
+    /// 「系统边缘动画会话」的安静期（秒）：最近一次「松手且窗口尺寸在变」之后的这段时间内，
+    /// 整轮不写任何窗口几何。0.35s 覆盖动画缓动收尾（尺寸差 <1px 的帧不再误判为动画结束），
     /// 也给贴边补齐留出稳定的帧。仅影响系统动画，不影响用户按住鼠标的拉伸。
-    private let verticalAnimationQuietPeriod: TimeInterval = 0.35
+    /// 双击上 / 下边缘（改高度）与左 / 右边缘（改宽度）都会触发这段系统动画，
+    /// 所以高度或宽度任一在变都算会话进行中：只在纵向做门禁时，横向动画仍会被
+    /// 每轮一次的水平居中补偿（写 x）拽住，表现成「拉伸卡顿 / 只拉一半」。
+    private let edgeAnimationQuietPeriod: TimeInterval = 0.35
     /// 判定窗口上 / 下端已顶到屏幕可见区边缘的容差（px）。
     private let verticalEdgeTolerance: CGFloat = 2
     /// 系统面板的 AX 子角色：Siri / 聚焦搜索框 / 权限弹窗等系统浮层都是 `AXSystemDialog`，
@@ -159,9 +169,9 @@ final class AdaptiveCenterManager {
     private var pollCount = 0
     /// 最近一次由本服务写入 AXPosition 的时间；用于把「我们自己挪窗口」排除在用户手动移动之外。
     private var lastAutoWrite = Date.distantPast
-    /// 最近一次观察到「系统垂直动画」（光标已松开且窗口高度在变）的时刻。
-    /// 用它加安静期把整段动画串成一个会话，避免只看单轮高度差时漏掉缓动收尾的帧。
-    private var lastVerticalChangeAt = Date.distantPast
+    /// 最近一次观察到「系统边缘动画」（光标已松开且窗口尺寸在变，横向 / 纵向都算）的时刻。
+    /// 用它加安静期把整段动画串成一个会话，避免只看单轮尺寸差时漏掉缓动收尾的帧。
+    private var lastSizeChangeAt = Date.distantPast
 
     private var isDragging = false
     /// 最近一次「按下 / 拖动」事件时间；leftMouseUp 丢失时用于兜底结束拖拽会话。
@@ -262,7 +272,7 @@ final class AdaptiveCenterManager {
         edgeFillStableCount = 0
         edgeFillHandled = false
         lastBoundaryHapticAt = Date.distantPast
-        lastVerticalChangeAt = Date.distantPast
+        lastSizeChangeAt = Date.distantPast
         emptyFocusCount = 0
     }
 
@@ -462,6 +472,10 @@ final class AdaptiveCenterManager {
         let center = visibleCenter(of: screen)
         let sid = screenID(screen)
         let centeredNow = isCentered(frame, center: center)
+        // 该窗口是否为首次进入跟踪（记录尚不存在）：只有真正新出现的窗口才允许
+        // 「首次激活按记忆模式摆正」，避免服务启动后第一次聚焦到某个早已存在的
+        // 窗口时把它拉伸到记忆布局。
+        let isNewWindow = !records.contains { CFEqual($0.window, window) }
         let rec = record(for: window)
 
         // 定期清理已销毁窗口的记录。活跃窗口的记录一直保留（不管多久没激活），
@@ -471,18 +485,21 @@ final class AdaptiveCenterManager {
         // 水平（左右）补偿每轮都允许；垂直（上下）每 6 轮才允许写一次 y（≈360ms）。
         // 降频只服务于「用户按住鼠标拉伸」；系统自己的边缘动画由下面的整轮门禁接管。
         let allowVerticalCompensation = pollCount % verticalCompensationDivisor == 0
-        // 相对上一轮高度是否在变：系统双击边缘把窗口拉到顶的过程带动画，每轮高度都在变。
-        // 用 lastFrame（上一轮帧，本轮 commit 尚未写入）判定，不新增持久状态。
+        // 相对上一轮尺寸是否在变：系统双击上 / 下边缘（改高度）或左 / 右边缘（改宽度）后
+        // 会自己跑一段动画，每轮尺寸都在变。用 lastFrame（上一轮帧，本轮 commit 尚未写入）判定，
+        // 不新增持久状态。横向与纵向必须一起看 —— 只判高度时，横向动画期间每轮的
+        // 水平居中补偿都会写 x，把系统的拉伸动画拽住。
         let heightChanging = lastFrame.map { abs($0.height - frame.height) > 1 } ?? false
-        // 系统垂直动画 = 光标确实已松开 + 高度在变。
+        let widthChanging = lastFrame.map { abs($0.width - frame.width) > 1 } ?? false
+        // 系统边缘动画 = 光标确实已松开 + 尺寸在变（横向 / 纵向任一）。
         // 以硬件左键状态 isPointerHeld 为准，不再依赖 isResizing：双击边缘时它可能残留 true，
         // 会让基于 !isResizing 的判据失效；用户按住鼠标拉伸时 isPointerHeld 必为真，不进门禁。
-        let systemVerticalAnimation = !isPointerHeld && heightChanging
-        if systemVerticalAnimation { lastVerticalChangeAt = Date() }
-        // 安静期把动画全程（含缓动收尾时高度差 <1px 的帧）串成一个会话；
+        let systemEdgeAnimation = !isPointerHeld && (heightChanging || widthChanging)
+        if systemEdgeAnimation { lastSizeChangeAt = Date() }
+        // 安静期把动画全程（含缓动收尾时尺寸差 <1px 的帧）串成一个会话；
         // 会话内整轮不写任何窗口几何，见下面的门禁。
-        let verticalAnimationActive =
-            Date().timeIntervalSince(lastVerticalChangeAt) < verticalAnimationQuietPeriod
+        let edgeAnimationActive =
+            Date().timeIntervalSince(lastSizeChangeAt) < edgeAnimationQuietPeriod
 
         // 松手后判定「用户是否手动把窗口挪离了中心」：以按下时的帧为基准，
         // 且只认被拖动的那一个窗口；拉伸不改变定位意图，不参与判定。
@@ -499,16 +516,18 @@ final class AdaptiveCenterManager {
             }
         }
 
-        // ── 系统垂直动画会话门禁 ──────────────────────────────────────
-        // 双击上 / 下边缘后，系统自己跑动画把那一端顶到可见区边缘。只在「锁定居中式
-        // 拉伸」分支跳过 y，但下面这些分支都会写完整两轴 AXPosition / AXSize：
+        // ── 系统边缘动画会话门禁（横向 / 纵向统一） ──────────────────
+        // 双击上 / 下边缘（改高度）或左 / 右边缘（改宽度）后，系统自己跑动画把那一端顶到
+        // 可见区边缘。只在「锁定居中式拉伸」分支跳过 y，但下面这些分支都会写完整两轴
+        // AXPosition / AXSize：
         //   · pendingSnap（双击松手时窗口本就在中心范围内 → 被误判为吸附）
         //   · pendingCrossScreen、分支 1 / 2 的激活 / 跨屏居中
         //   · setVerticalFill 贴边补齐（写 AXSize）
-        // 任意一个都能把系统动画拽住。
+        //   · 分支 3 的水平居中补偿（每轮写 x）
+        // 任意一个都能把系统动画拽住；横向动画尤其会被每轮的 x 补偿反复拉回中心。
         // 因此会话内整轮不写几何，只更新轮询状态；挂起的吸附是双击误触发，直接丢弃；
         // 跨屏挂起保留到会话结束后的下一轮再执行。
-        if verticalAnimationActive {
+        if edgeAnimationActive {
             pendingSnap = false
             commit(window: window, frame: frame, screenID: sid, center: center)
             return
@@ -607,7 +626,17 @@ final class AdaptiveCenterManager {
             // 1) 首次激活（记录里 userPositioned 为 false）→ 自动居中。
             // 用户已把这个窗口固定在某一侧时，再怎么切换激活都不打扰它；拖动中不打断。
             if !rec.userPositioned && !centeredNow && !isPointerHeld {
-                result = moveToCenter(window, frame: frame, center: center)
+                // 重新打开的窗口（尤其台前调度下被 macOS 挤偏 / 缩进）尺寸可能与该 App
+                // 记忆模式的目标布局不符：先按记忆模式摆正（拉伸到目标尺寸 + 居中），
+                // 而不是只平移居中 —— 只平移会保留左右缝隙（缝隙之和恰好等于居中前
+                // 挤偏的空间）。仅对真正新出现、且垂直已铺满可见区的窗口生效。
+                if isNewWindow, verticalEdgeState(frame, screen: screen) == .both,
+                   let straightened = straightenToRememberedMode(window, frame: frame, screen: screen) {
+                    lastAutoWrite = Date()
+                    result = straightened
+                } else {
+                    result = moveToCenter(window, frame: frame, center: center)
+                }
             }
         } else if screenChanged {
             // 2) 移动到另一块屏幕：只在光标松开后居中。拖动中由 pendingCrossScreen 挂起，
@@ -629,10 +658,10 @@ final class AdaptiveCenterManager {
             // 会话门禁整轮 return，根本走不到这里）：
             //   ① 降频：每 6 轮（≈360ms）才允许写一次 y，水平仍每轮补偿；
             //   ② 贴边保护：某一端已顶到可见区边缘时这一轮连 y 都不写，只保持水平居中。
-            // !systemVerticalAnimation 保留作双保险，防止门禁边界条件被改动后漏判。
+            // !systemEdgeAnimation 保留作双保险，防止门禁边界条件被改动后漏判。
             // 用户按住鼠标拉伸时 isPointerHeld 为真，不进门禁，中心锁定照常工作。
             let adjustVertical = allowVerticalCompensation
-                && !systemVerticalAnimation
+                && !systemEdgeAnimation
                 && !isVerticallyEdgeSnapped(frame, screen: screen)
             result = moveToCenter(window, frame: frame, center: center,
                                   adjustVertical: adjustVertical)
@@ -853,6 +882,40 @@ final class AdaptiveCenterManager {
         WindowManager.setPosition(window, moved)
         lastAutoWrite = Date()
         return moved
+    }
+
+    /// 首次激活时按该 App 记忆的模式「摆正」窗口：写入记忆模式的目标帧（拉伸尺寸 +
+    /// 居中），返回摆正后系统实际呈现的帧；无需写尺寸时返回 nil，交回普通居中路径。
+    ///
+    /// 为什么不是只居中：重新打开的窗口被系统挤偏 / 缩进时（台前调度会向一侧缩进），
+    /// 只做平移居中会保留左右缝隙。目标布局由 `WindowManager.targetFrame(for:)` 计算，
+    /// 与手动复位共用同一份口径（含台前调度预留、最小宽度保底、竖屏自适应）。
+    ///
+    /// 「忽略的 App」中勾选了「复位」的条目不参与：复位功能对这些 App 完全不生效，
+    /// 居中服务也不能替它写尺寸。
+    private func straightenToRememberedMode(_ window: AXUIElement,
+                                            frame: CGRect,
+                                            screen: NSScreen) -> CGRect? {
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(window, &pid) == .success else { return nil }
+        guard let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+              !bundleID.isEmpty else { return nil }
+        if let rule = Preferences.ignoredApp(for: bundleID), rule.skipReset { return nil }
+
+        let mode = Preferences.windowMode(for: bundleID)
+        let target = WindowManager.targetFrame(for: mode,
+                                               frame: frame,
+                                               visible: screen.visibleFrame,
+                                               screen: screen,
+                                               margin: Preferences.effectiveMargin)
+        // 尺寸与垂直位置都已是目标布局：不需要写尺寸，水平位置交给调用方按需居中。
+        if abs(frame.width - target.width) <= 2
+            && abs(frame.height - target.height) <= 2
+            && abs(frame.origin.y - target.origin.y) <= 2 {
+            return nil
+        }
+        return WindowManager.applyLayout(window, to: target,
+                                         mode: mode, bundleID: bundleID)
     }
 
     private func sameWindow(_ a: AXUIElement?, _ b: AXUIElement) -> Bool {

@@ -18,7 +18,7 @@ enum Preferences {
     static let adaptiveCenterKey = "adaptiveCenter"
     /// 窄窗口模式的宽度取值方式（见 `NarrowWidthSource`）。
     static let narrowWidthSourceKey = "narrowWidthSource"
-    /// 宽模式的最小宽度（整数，逻辑分辨率 / 点，默认 1710；0 = 不启用保底）。
+    /// 宽模式的最小宽度（整数，逻辑分辨率 / 点，默认 1440；0 = 不启用保底）。
     static let minimumWidthKey = "minimumWidth"
     /// 竖屏自适应开关。
     static let portraitAdaptiveKey = "portraitAdaptive"
@@ -75,9 +75,9 @@ enum Preferences {
     static let stageManagerDetectDefault = true
 
     /// 宽模式「最小宽度」的默认值（逻辑分辨率 / 点）。
-    static let minimumWidthDefault = 1710
+    static let minimumWidthDefault = 1440
 
-    /// 读取宽模式的最小宽度（整数，逻辑分辨率 / 点）；未设置时默认 1710，非法值收敛到 0~10000。
+    /// 读取宽模式的最小宽度（整数，逻辑分辨率 / 点）；未设置时默认 1440，非法值收敛到 0~10000。
     /// - `0` = 不启用保底，完全按「左右预留」计算。
     /// - 这是宽模式宽度的**下限**，逻辑优先级高于「左右预留」：屏幕较小时预留会被压缩。
     /// - 窗口宽度不会超过屏幕可见宽（由 `WindowManager.targetFrame` 再夹一次）。
@@ -297,6 +297,31 @@ extension Preferences {
     /// 记忆某 App 的窗口模式（持久化到 UserDefaults）。
     static func setWindowMode(_ mode: WindowMode, for bundleID: String) {
         UserDefaults.standard.set(mode.rawValue, forKey: modeKey(for: bundleID))
+    }
+
+    // MARK: - 各 App 在指定模式下「系统实际呈现」的有效布局
+
+    /// 记录某 App 在某模式下「写入目标帧后系统实际呈现的帧」（含收尾居中后的位置）。
+    ///
+    /// 背景：部分 App（企业微信等）有最小宽度限制，会夹断 `AXSize` 写入，窗口实际尺寸
+    /// 永远达不到模式目标宽度，仅凭「当前帧 vs 目标帧」比对会永远判定为「未摆正」，
+    /// 导致无法切换回另一个模式。有效布局就是「本 App 在该模式下可实际达到的最终形态」，
+    /// 由 `WindowManager.adjustCurrentWindow` 参与已摆正判定的兜底。
+    private static func effectiveFrameKey(for bundleID: String, mode: WindowMode) -> String {
+        "effectiveFrame.\(mode.rawValue).\(bundleID)"
+    }
+
+    static func setEffectiveFrame(_ frame: CGRect, mode: WindowMode, for bundleID: String) {
+        let value = "\(frame.origin.x),\(frame.origin.y),\(frame.width),\(frame.height)"
+        UserDefaults.standard.set(value, forKey: effectiveFrameKey(for: bundleID, mode: mode))
+    }
+
+    static func effectiveFrame(mode: WindowMode, for bundleID: String) -> CGRect? {
+        let key = effectiveFrameKey(for: bundleID, mode: mode)
+        guard let value = UserDefaults.standard.string(forKey: key) else { return nil }
+        let parts = value.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 4 else { return nil }
+        return CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
     }
 }
 

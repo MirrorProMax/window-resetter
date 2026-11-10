@@ -70,7 +70,21 @@ struct WindowManager {
 
         // 判断窗口是否已处于当前模式的布局：
         // 宽模式按“宽度 + 水平居中”判定；窄模式按“宽度命中 + 上下铺满可见区”判定（含等比缩小兜底）。
-        let atTarget = isAtTarget(mode: mode, frame: frame, visible: visible, screen: screen, margin: margin)
+        var atTarget = isAtTarget(mode: mode, frame: frame, visible: visible, screen: screen, margin: margin)
+        // 兜底：部分 App（企业微信等）有最小宽度限制，会夹断 AXSize 写入，窗口实际尺寸
+        // 永远达不到窄模式目标宽度，`isAtTarget` 的三项判据全部不成立 → 永远判「未摆正」，
+        // 每次点击都重复摆正、无法切换回宽模式。这里用「上次写入目标后系统实际呈现的帧」
+        // （该 App 在当前模式下的有效布局）做比对：当前帧与它一致（容差 2pt）说明布局
+        // 已是本 App 可达到的最终形态，视为已摆正，允许进入切换分支。
+        // 用户拖动过窗口时位置对不上，仍走「复位」分支，既有行为不受影响。
+        if !atTarget,
+           let effective = Preferences.effectiveFrame(mode: mode, for: bundleID),
+           abs(frame.origin.x - effective.origin.x) <= 2,
+           abs(frame.origin.y - effective.origin.y) <= 2,
+           abs(frame.width - effective.width) <= 2,
+           abs(frame.height - effective.height) <= 2 {
+            atTarget = true
+        }
         // 是否「真的摆正」主要看窗口中心在不在目标布局的中心范围内（设计约定）。
         // isAtTarget 的三项判据都不检查水平位置，靠右 640px 的窗口仍会被判「已在窄模式」而直接翻宽；
         // 且 byAspect 是 `||` 兜底、同样不看位置，只在单项里补 x 判定会被它绕过 —— 门禁必须放最外层。
@@ -84,9 +98,9 @@ struct WindowManager {
                                         visible: visible,
                                         screen: screen,
                                         margin: margin)
-            applyFrame(window, from: frame, to: newTarget)
+            applyFrame(window, from: frame, to: newTarget, mode: newMode, bundleID: bundleID)
         } else {
-            applyFrame(window, from: frame, to: target)
+            applyFrame(window, from: frame, to: target, mode: mode, bundleID: bundleID)
         }
     }
 
@@ -169,6 +183,8 @@ struct WindowManager {
     ///   另保留「宽高比接近目标比」兜底，覆盖被最大尺寸 / 台前调度等比缩小、系统写不到目标高度的窗口。
     /// - 注意：本函数**不判定窗口中心 / 水平位置**。位置是否到位由 `adjustCurrentWindow`
     ///   的 `isCenterAligned` 门禁统一负责，这样 `byAspect` 兜底也受同一约束。
+    /// - Note: App 最小宽度夹断导致目标帧**不可达**的场景，由 `adjustCurrentWindow`
+    ///   的「有效布局帧」比对兜底（见 `Preferences.effectiveFrame`），这里不处理。
     static func isAtTarget(mode: WindowMode,
                                    frame: CGRect,
                                    visible: CGRect,
@@ -280,6 +296,24 @@ struct WindowManager {
         return target
     }
 
+    /// 一次性写入完整目标帧（位置 + 尺寸）并做收尾居中兜底；供 `AdaptiveCenterManager`
+    /// 的「首次激活按记忆模式摆正」使用，返回摆正后系统实际呈现的帧。
+    ///
+    /// 与手动复位共用 `recenterAfterAdjust`：App 夹断尺寸（固定宽度、最大尺寸上限等）时，
+    /// 窗口仍会以系统实际给出的尺寸居中，不会停在按目标宽度算出的错误 x 上。
+    /// 提供 `mode` / `bundleID` 时，写入完成后回读实际帧并记忆为该模式的有效布局，
+    /// 与手动复位共用同一份基准（见 `adjustCurrentWindow` 的有效帧比对）。
+    @discardableResult
+    static func applyLayout(_ window: AXUIElement, to target: CGRect,
+                            mode: WindowMode? = nil, bundleID: String? = nil) -> CGRect {
+        setFrame(window, target)
+        recenterAfterAdjust(window, target: target)
+        if let mode, let bundleID, let actual = getFrame(window) {
+            Preferences.setEffectiveFrame(actual, mode: mode, for: bundleID)
+        }
+        return getFrame(window) ?? target
+    }
+
     // MARK: - 收尾强制居中（兜底）
 
     /// 调整完成后的兜底：**不判断窗口尺寸能否自由拉伸**，一律再按实际尺寸把窗口摆到居中位置。
@@ -306,15 +340,30 @@ struct WindowManager {
     // MARK: - 平滑变化（逐帧动画）
 
     /// 正在进行的动画。保存目标帧，供中途再次触发时先「跳到终点」再判定。
-    private static var pendingAnimation: (window: AXUIElement, target: CGRect, timer: Timer)?
+    /// `onFinish` 在动画真正到位后调用（含被 `finishPendingAnimation` 提前收尾的情况），
+    /// 用于回读并记忆有效布局帧。
+    private static var pendingAnimation: (window: AXUIElement, target: CGRect, timer: Timer,
+                                          onFinish: (() -> Void)?)?
 
     /// 按开关决定立即设置还是平滑过渡；两种方式到位后都强制做一次收尾居中（兜底）。
-    private static func applyFrame(_ window: AXUIElement, from: CGRect, to: CGRect) {
+    /// - Parameters:
+    ///   - mode / bundleID: 提供时，布局到位（含收尾居中）后回读系统实际呈现的帧，
+    ///     记忆为该 App 在该模式下的有效布局，供下一次「已摆正」判定兜底
+    ///     （App 夹断尺寸时目标帧永远不可达）。
+    private static func applyFrame(_ window: AXUIElement, from: CGRect, to: CGRect,
+                                   mode: WindowMode? = nil, bundleID: String? = nil) {
+        let rememberEffective: () -> Void = {
+            guard let mode, let bundleID, let actual = getFrame(window) else { return }
+            Preferences.setEffectiveFrame(actual, mode: mode, for: bundleID)
+        }
         if Preferences.smoothAnimation {
-            animateFrame(window, from: from, to: to, durationMs: Preferences.animationDurationMs)
+            animateFrame(window, from: from, to: to,
+                         durationMs: Preferences.animationDurationMs,
+                         onFinish: rememberEffective)
         } else {
             setFrame(window, to)
             recenterAfterAdjust(window, target: to)
+            rememberEffective()
         }
     }
 
@@ -323,8 +372,9 @@ struct WindowManager {
     private static func finishPendingAnimation() {
         guard let pending = pendingAnimation else { return }
         pending.timer.invalidate()
-        setFrame(pending.window, pending.target)
         pendingAnimation = nil
+        setFrame(pending.window, pending.target)
+        pending.onFinish?()
     }
 
     /// 在 durationMs 内，用 ease-in-out 逐帧插值设置窗口的位置与尺寸。
@@ -332,12 +382,14 @@ struct WindowManager {
     private static func animateFrame(_ window: AXUIElement,
                                      from: CGRect,
                                      to: CGRect,
-                                     durationMs: Int) {
+                                     durationMs: Int,
+                                     onFinish: (() -> Void)? = nil) {
         finishPendingAnimation()
         let duration = TimeInterval(durationMs) / 1000.0
         guard duration > 0 else {
             setFrame(window, to)
             recenterAfterAdjust(window, target: to)
+            onFinish?()
             return
         }
 
@@ -358,10 +410,11 @@ struct WindowManager {
                 // 动画走完后补最后一步：无条件把窗口按实际尺寸居中（兜底）。
                 WindowManager.recenterAfterAdjust(window, target: to)
                 WindowManager.pendingAnimation = nil
+                onFinish?()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
-        pendingAnimation = (window, to, timer)
+        pendingAnimation = (window, to, timer, onFinish)
     }
 
     /// ease-in-out 二次缓动：起步和收尾慢，中间快。
